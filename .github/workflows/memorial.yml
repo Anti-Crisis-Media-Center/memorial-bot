@@ -37,6 +37,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Кеш моделі для вирізання людини з фото
+        uses: actions/cache@v4
+        with:
+          path: ~/.u2net
+          key: u2net-human-seg-v1
+
       - run: pip install -r requirements.txt
 
       - name: Запуск
@@ -47,6 +53,7 @@ jobs:
           PUBLISH_TO_CHANNEL: ${{ vars.PUBLISH_TO_CHANNEL }}
           FB_PAGE_ID: ${{ vars.FB_PAGE_ID }}
           FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
+          U2NET_HOME: /home/runner/.u2net
           FORCE_CATEGORY: ${{ inputs.category != 'auto' && inputs.category || '' }}
         run: python bot.py ${{ inputs.mode || 'auto' }}
 

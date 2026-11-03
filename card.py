@@ -8,7 +8,7 @@ import io
 from pathlib import Path
 
 import requests
-from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 ROOT = Path(__file__).parent
 FONTS = ROOT / "fonts"
@@ -102,19 +102,56 @@ def draw_candle(d, x, y, color):
     d.polygon([(x - 7, y - 1), (x + 7, y - 1), (x, y - 22)], fill=color)
 
 
+_SESSION = None
+
+
+def cut_person(photo: Image.Image):
+    """Вирізає людину з фото (прибирає тло). Якщо бібліотеки немає — повертає None."""
+    global _SESSION
+    try:
+        from rembg import new_session, remove
+    except ImportError:
+        return None
+    if _SESSION is None:
+        _SESSION = new_session("u2net_human_seg")
+    return remove(photo.convert("RGB"), session=_SESSION)
+
+
+def halo(size, center, radius, color, strength):
+    """М'яке світле коло за людиною, щоб вирізане фото не виглядало пласким."""
+    layer = Image.new("RGBA", size, color + (0,))
+    mask = Image.new("L", size, 0)
+    ImageDraw.Draw(mask).ellipse((center[0] - radius, center[1] - radius,
+                                   center[0] + radius, center[1] + radius), fill=strength)
+    layer.putalpha(mask.filter(ImageFilter.GaussianBlur(radius * 0.45)))
+    return layer
+
+
 def make_card(photo: Image.Image, *, category, name, subtitle, city, years, credit=True) -> bytes:
     accent = ACCENT.get(category, ACCENT["civilians"])
     card = gradient((W, H), BG_TOP, BG_BOTTOM)
 
     # --- фото: чорно-біле, праворуч унизу, з м'яким переходом у тло
-    # дуотон: темні ділянки фото стають темно-синіми, тож тло фото зливається з карткою
-    ph = ImageOps.autocontrast(ImageOps.grayscale(photo), cutoff=1)
-    ph = ImageOps.colorize(ph, black=BG_BOTTOM, white=(250, 250, 250), mid=(118, 126, 146))
+    cut = cut_person(photo)
+    # дуотон: темні ділянки фото стають темно-синіми
+    gray = ImageOps.autocontrast(ImageOps.grayscale(photo), cutoff=1)
+    ph = ImageOps.colorize(gray, black=BG_BOTTOM, white=(250, 250, 250), mid=(118, 126, 146))
     target_h = int(H * 0.66)
-    ph = ph.resize((int(ph.width * target_h / ph.height), target_h), Image.LANCZOS)
-    ph = ph.filter(ImageFilter.UnsharpMask(radius=2, percent=60, threshold=2))
+    scale = target_h / ph.height
+    size = (int(ph.width * scale), target_h)
+    ph = ph.resize(size, Image.LANCZOS).filter(ImageFilter.UnsharpMask(radius=2, percent=60, threshold=2))
     px = W - 44 - ph.width          # праве ребро фото всередині рамки
-    card.paste(ph, (px, H - 31 - ph.height - 90), fade_mask(ph.size))   # піднято на 90 px, низ плавно зникає
+    py = H - 31 - ph.height - 90    # піднято, низ плавно зникає
+    if cut is not None:
+        # тло прибрано: людина на тлі картки + м'яке світло за головою
+        card = Image.alpha_composite(card.convert("RGBA"),
+                                     halo((W, H), (px + size[0] // 2, py + size[1] // 3),
+                                          int(size[0] * 0.55), (90, 110, 160), 120)).convert("RGB")
+        alpha = cut.getchannel("A").resize(size, Image.LANCZOS)
+        mask = ImageChops.multiply(alpha, fade_mask(size, left=0, top=0, right=0, bottom=0.22))
+    else:
+        mask = fade_mask(size)
+    card.paste(ph, (px, py), mask)
 
     # затемнення внизу, щоб підпис читався поверх фото
     shade_h = 300
