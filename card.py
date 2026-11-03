@@ -104,6 +104,32 @@ def draw_candle(d, x, y, color):
 
 _SESSION = None
 
+# Скільки місця займає людина: висота обличчя = 30% висоти картки,
+# центр обличчя — праворуч (70% ширини) і трохи вище середини (44% висоти).
+FACE_H = 0.30
+FACE_CX, FACE_CY = 0.70, 0.44
+
+
+def find_face(photo: Image.Image):
+    """Найнадійніше обличчя на фото (детектор YuNet, OpenCV): (x, y, w, h) або None."""
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return None
+    model = ROOT / "models" / "face_detection_yunet_2023mar.onnx"
+    if not model.exists():
+        return None
+    img = cv2.cvtColor(np.asarray(photo.convert("RGB")), cv2.COLOR_RGB2BGR)
+    h, w = img.shape[:2]
+    det = cv2.FaceDetectorYN.create(str(model), "", (w, h), score_threshold=0.7)
+    _, faces = det.detect(img)
+    if faces is None or len(faces) == 0:
+        return None
+    best = max(faces, key=lambda f: f[14] * f[2] * f[3])     # впевненість × розмір
+    x, y, fw, fh = (int(v) for v in best[:4])
+    return x, y, fw, fh
+
 
 def cut_person(photo: Image.Image):
     """Вирізає людину з фото (прибирає тло). Якщо бібліотеки немає — повертає None."""
@@ -132,25 +158,40 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     card = gradient((W, H), BG_TOP, BG_BOTTOM)
 
     # --- фото: чорно-біле, праворуч унизу, з м'яким переходом у тло
-    # Фото вбудовується як у першій картці: праворуч унизу, виходить за край,
-    # зліва й зверху плавно розчиняється в тлі. Тло самого фото (світла стіна, сніг тощо)
-    # замінюється на тло картки, тож усі фото виглядають однаково спокійно.
+    # Фото: людина праворуч, тло фото прибране, краї плавно розчиняються.
+    # Масштаб — за обличчям, щоб на всіх картках воно було однакового розміру.
     gray = ImageOps.autocontrast(ImageOps.grayscale(photo), cutoff=1)
-    ph = ImageOps.colorize(gray, black=BG_BOTTOM, white=(250, 250, 250), mid=(118, 126, 146))
-    target_h = int(H * 0.80)
-    size = (int(ph.width * target_h / ph.height), target_h)
-    ph = ph.resize(size, Image.LANCZOS).filter(ImageFilter.UnsharpMask(radius=2, percent=60, threshold=2))
-    px = W - size[0] + int(size[0] * 0.10)
-    py = H - size[1]
+    duo = ImageOps.colorize(gray, black=BG_BOTTOM, white=(250, 250, 250), mid=(118, 126, 146))
+    face = find_face(photo)
+    if face is not None:
+        fx, fy, fw, fh = face
+        scale = FACE_H * H / fh
+        scale = min(scale, 2.4 * H / photo.height)          # не роздувати дрібні фото — інакше розмиті
+        ox = int(FACE_CX * W - (fx + fw / 2) * scale)
+        oy = int(FACE_CY * H - (fy + fh / 2) * scale)
+    else:                                                  # обличчя не знайдено — як раніше
+        scale = 0.80 * H / photo.height
+        ox = W - int(photo.width * scale * 0.90)
+        oy = H - int(photo.height * scale)
+    size = (max(1, int(photo.width * scale)), max(1, int(photo.height * scale)))
+    duo = duo.resize(size, Image.LANCZOS).filter(ImageFilter.UnsharpMask(radius=2, percent=60, threshold=2))
+
     cut = cut_person(photo)
     if cut is not None:
         alpha = cut.getchannel("A").resize(size, Image.LANCZOS)
         alpha = alpha.filter(ImageFilter.MinFilter(5)).filter(ImageFilter.GaussianBlur(8))
-        under = card.crop((px, py, px + size[0], py + size[1]))
-        if under.size != size:
-            under = under.resize(size)
-        ph = Image.composite(ph, under, alpha)
-    card.paste(ph, (px, py), fade_mask(size, left=0.35, top=0.25, right=0, bottom=0))
+        alpha = ImageChops.multiply(alpha, fade_mask(size, left=0, top=0, right=0.06, bottom=0.18))
+    else:
+        alpha = fade_mask(size, left=0.35, top=0.25, right=0.06, bottom=0.18)
+
+    layer = Image.new("RGB", (W, H))
+    mask = Image.new("L", (W, H), 0)
+    layer.paste(duo, (ox, oy))
+    mask.paste(alpha, (ox, oy))
+    # ліва колонка з текстом лишається чистою: людина м'яко зникає ліворуч
+    ramp = Image.linear_gradient("L").rotate(90, expand=True).resize((W, H))   # 0 зліва → 255 справа
+    ramp = ramp.point(lambda v: 0 if v < 100 else min(255, int((v - 100) * 255 / 70)))
+    card.paste(layer, (0, 0), ImageChops.multiply(mask, ramp))
 
     # затемнення внизу, щоб підпис читався поверх фото
     shade_h = 300
