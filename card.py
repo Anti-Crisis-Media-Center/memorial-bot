@@ -136,12 +136,12 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     # дуотон: темні ділянки фото стають темно-синіми
     gray = ImageOps.autocontrast(ImageOps.grayscale(photo), cutoff=1)
     ph = ImageOps.colorize(gray, black=BG_BOTTOM, white=(250, 250, 250), mid=(118, 126, 146))
-    target_h = int(H * 0.66)
+    target_h = int(H * 0.76)
     scale = target_h / ph.height
     size = (int(ph.width * scale), target_h)
     ph = ph.resize(size, Image.LANCZOS).filter(ImageFilter.UnsharpMask(radius=2, percent=60, threshold=2))
     px = W - 44 - ph.width          # праве ребро фото всередині рамки
-    py = H - 31 - ph.height - 90    # піднято, низ плавно зникає
+    py = H - 31 - ph.height - 50    # трохи піднято, низ плавно зникає
     if cut is not None:
         # тло прибрано: людина на тлі картки + м'яке світло за головою
         card = Image.alpha_composite(card.convert("RGBA"),
