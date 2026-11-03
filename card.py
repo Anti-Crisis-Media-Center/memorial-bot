@@ -144,7 +144,7 @@ def cut_person(photo: Image.Image):
     except ImportError:
         return None
     if _SESSION is None:
-        _SESSION = new_session("u2net_human_seg")
+        _SESSION = new_session("birefnet-portrait")   # точніше за u2net: не лишає тло між рукою й тілом
     return remove(photo.convert("RGB"), session=_SESSION)
 
 
