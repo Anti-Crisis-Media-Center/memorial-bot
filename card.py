@@ -221,13 +221,13 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         size -= 4
     name_font = font("Bold", size)
     for part in name.split():
-        d.text((margin, y), part, font=name_font, fill=YELLOW)   # ім'я — жовтим
+        d.text((margin, y), part, font=name_font, fill=NAME_COLOR)
         y += int(size * 1.13)
     y += 14
 
     # --- роки життя одразу під ім'ям
     if years:
-        d.text((margin, y), years, font=font("SemiBold", 36), fill=WHITE)
+        d.text((margin, y), years, font=font("SemiBold", 36), fill=YEARS_COLOR)
         y += 62
 
     # --- професія / підрозділ
