@@ -5,7 +5,7 @@ import re
 from memorial import parse_date
 from regions import REGION_HASHTAGS, REGION_NAMES, normalize, region_from_field
 
-OPENING = "🕯 Щодня о 9:00 Україна хвилиною мовчання вшановує загиблих у війні Росії проти України."
+OPENING = "🕯 Щодня о 9:00 Україна хвилиною мовчання вшановує загиблих у війні росії проти України."
 CLOSING = "Вшануймо пам'ять хвилиною мовчання."
 
 MONTHS_GEN = ["", "січня", "лютого", "березня", "квітня", "травня", "червня",
