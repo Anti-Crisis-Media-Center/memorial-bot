@@ -158,9 +158,43 @@ def halo(size, center, radius, color, strength):
     return layer
 
 
+PAPER = False                     # пом'ятий рваний аркуш за людиною (True — увімкнути)
+PAPER_STRENGTH = 0.55             # наскільки помітний папір (0 — не видно, 1 — яскраво-білий)
+
+
+def torn_paper(seed: int):
+    """Пом'ятий аркуш з рваним краєм у правій нижній частині картки (маска + текстура)."""
+    import random
+    rnd = random.Random(seed)
+    pts = [(W, H)]
+    x, y = 630, H                  # лівий рваний край знизу вгору (праворуч від тексту)
+    while y > 330:
+        x = max(600, min(670, x + rnd.randint(-12, 12)))
+        pts.append((x, y)); y -= rnd.randint(8, 18)
+    while x < W:                   # верхній рваний край зліва направо
+        y = max(300, min(380, y + rnd.randint(-12, 12)))
+        pts.append((x, y)); x += rnd.randint(8, 18)
+    pts.append((W, y))
+    mask = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(mask).polygon(pts, fill=255)
+    grain = Image.effect_noise((W, H), 40).filter(ImageFilter.GaussianBlur(1.0))
+    folds = Image.effect_noise((W // 6, H // 6), 70).resize((W, H), Image.BICUBIC).filter(ImageFilter.GaussianBlur(7))
+    tex = ImageOps.colorize(ImageChops.blend(grain, folds, 0.6),
+                            black=(150, 146, 140), white=(236, 233, 228)).convert("RGB")
+    rim = ImageChops.subtract(mask, mask.filter(ImageFilter.MinFilter(7)))
+    tex.paste((250, 249, 246), (0, 0), rim)            # світлий надірваний край
+    return tex, mask
+
+
 def make_card(photo: Image.Image, *, category, name, subtitle, city, years, credit=True) -> bytes:
     accent = ACCENT.get(category, ACCENT["civilians"])
     card = gradient((W, H), BG_TOP, BG_BOTTOM)
+    if PAPER:
+        tex, pmask = torn_paper(seed=sum(map(ord, name)))   # для кожної людини свій надрив
+        shadow = pmask.filter(ImageFilter.GaussianBlur(14)).point(lambda v: int(v * 0.5))
+        card.paste((0, 0, 0), (-6, 8), shadow)
+        dimmed = Image.blend(card, tex, PAPER_STRENGTH)
+        card.paste(dimmed, (0, 0), pmask)
 
     # --- фото: чорно-біле, праворуч унизу, з м'яким переходом у тло
     # Фото: людина праворуч, тло фото прибране, краї плавно розчиняються.
