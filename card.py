@@ -104,10 +104,10 @@ def draw_candle(d, x, y, color):
 
 _SESSION = None
 
-# Скільки місця займає людина: висота обличчя = 30% висоти картки,
-# центр обличчя — праворуч (70% ширини) і трохи вище середини (44% висоти).
-FACE_H = 0.30
-FACE_CX, FACE_CY = 0.70, 0.44
+# Скільки місця займає людина: висота обличчя = 20% висоти картки,
+# центр обличчя — праворуч (70% ширини) і вище середини (40% висоти).
+FACE_H = 0.20
+FACE_CX, FACE_CY = 0.70, 0.40
 
 
 def find_face(photo: Image.Image):
@@ -165,8 +165,12 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     face = find_face(photo)
     if face is not None:
         fx, fy, fw, fh = face
+        fcy = fy + fh / 2
         scale = FACE_H * H / fh
-        scale = min(scale, 2.4 * H / photo.height)          # не роздувати дрібні фото — інакше розмиті
+        # якщо фото по плечі — збільшуємо, щоб низ фото діставав до низу картки (не «висіло» в повітрі),
+        # але обличчя не більше 32% висоти картки
+        scale = max(scale, (1 - FACE_CY) * H / max(1, photo.height - fcy))
+        scale = min(scale, 0.32 * H / fh, 2.4 * H / photo.height)
         ox = int(FACE_CX * W - (fx + fw / 2) * scale)
         oy = int(FACE_CY * H - (fy + fh / 2) * scale)
     else:                                                  # обличчя не знайдено — як раніше
