@@ -31,10 +31,10 @@ ACCENT = {                        # колір рамки й позначки м
     "children": YELLOW,
     "militaries": (126, 106, 47),  # #7e6a2f — оливковий з брендбука АКМЦ
 }
-SUBTITLE = {                      # колір рядка професії/підрозділу (має бути читабельним на темному)
-    "civilians": YELLOW,
-    "children": YELLOW,
-    "militaries": YELLOW,
+SUBTITLE = {                      # професія / підрозділ — без акценту, світлий текст
+    "civilians": (226, 230, 238),
+    "children": (226, 230, 238),
+    "militaries": (226, 230, 238),
 }
 
 
@@ -137,7 +137,7 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
 
     # --- професія / підрозділ
     if subtitle:
-        sub_font = font("SemiBold", 34)
+        sub_font = font("Medium", 34)
         for line in wrap(d, subtitle, sub_font, col_w)[:3]:
             d.text((margin, y), line, font=sub_font, fill=SUBTITLE.get(category, YELLOW))
             y += 44
