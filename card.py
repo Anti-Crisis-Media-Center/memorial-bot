@@ -186,6 +186,10 @@ def torn_paper(seed: int):
     return tex, mask
 
 
+BG_IMAGES = {}                    # фон на всю картку за категорією, напр. {"civilians": "bg/flowers1.jpg"}
+BG_OPACITY = 0.5                  # 0.5 — фон наполовину прозорий поверх графітового тла
+BG_CROP_TOP = 0.10                # обрізати зверху (у прикладі там шматок паперу)
+
 FLOWERS = None                    # шлях до фото квітів (None — без квітів)
 FLOWER_STYLE = "band"             # "band" — рваною смугою внизу, "corner" — рваним аркушем праворуч
 FLOWER_STRENGTH = 1.05            # яскравість квітів (0 — не видно)
@@ -228,6 +232,11 @@ def flower_layer(seed: int):
 def make_card(photo: Image.Image, *, category, name, subtitle, city, years, credit=True) -> bytes:
     accent = ACCENT.get(category, ACCENT["civilians"])
     card = gradient((W, H), BG_TOP, BG_BOTTOM)
+    if BG_IMAGES.get(category):
+        bg = Image.open(BG_IMAGES[category]).convert("RGB")
+        bg = bg.crop((0, int(bg.height * BG_CROP_TOP), bg.width, bg.height))
+        bg = ImageOps.fit(bg, (W, H), centering=(0.5, 0.5))
+        card = Image.blend(card, bg, BG_OPACITY)
     if PAPER:
         tex, pmask = torn_paper(seed=sum(map(ord, name)))   # для кожної людини свій надрив
         shadow = pmask.filter(ImageFilter.GaussianBlur(14)).point(lambda v: int(v * 0.5))
