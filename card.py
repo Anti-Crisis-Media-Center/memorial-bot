@@ -64,7 +64,7 @@ def gradient(size, top, bottom):
     return g.resize(size)
 
 
-def fade_mask(size, left=0.35, top=0.25, right=0.10):
+def fade_mask(size, left=0.35, top=0.25, right=0.10, bottom=0.18):
     """Маска, щоб фото плавно розчинялося в тлі зліва і зверху."""
     w, h = size
     mask = Image.new("L", size, 255)
@@ -77,6 +77,9 @@ def fade_mask(size, left=0.35, top=0.25, right=0.10):
                 a = min(a, int(255 * (x / lw) ** 1.4))
             if y < th:
                 a = min(a, int(255 * (y / th) ** 1.4))
+            bh = int(h * bottom)
+            if bh and y > h - bh:
+                a = min(a, int(255 * ((h - y) / bh) ** 1.4))
             rw = int(w * right)
             if rw and x > w - rw:
                 a = min(a, int(255 * ((w - x) / rw) ** 1.4))
@@ -111,7 +114,7 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     ph = ph.resize((int(ph.width * target_h / ph.height), target_h), Image.LANCZOS)
     ph = ph.filter(ImageFilter.UnsharpMask(radius=2, percent=60, threshold=2))
     px = W - 44 - ph.width          # праве ребро фото всередині рамки
-    card.paste(ph, (px, H - 31 - ph.height), fade_mask(ph.size))
+    card.paste(ph, (px, H - 31 - ph.height - 90), fade_mask(ph.size))   # піднято на 90 px, низ плавно зникає
 
     # затемнення внизу, щоб підпис читався поверх фото
     shade_h = 300
