@@ -178,6 +178,12 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         scale = min(scale, 0.32 * H / fh, 2.4 * H / photo.height)
         ox = int(FACE_CX * W - (fx + fw / 2) * scale)
         oy = int(FACE_CY * H - (fy + fh / 2) * scale)
+        # фото по плечі, яке не дістає до низу: опускаємо його (обличчя не нижче 60% висоти),
+        # щоб людина не «висіла» в повітрі
+        bottom = oy + photo.height * scale
+        if bottom < H - 31:
+            max_shift = int(0.60 * H - (oy + fcy * scale))
+            oy += max(0, min(int(H - 31 - bottom), max_shift))
     else:                                                  # обличчя не знайдено — як раніше
         scale = 0.80 * H / photo.height
         ox = W - int(photo.width * scale * 0.90)
