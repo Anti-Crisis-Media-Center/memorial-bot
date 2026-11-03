@@ -104,11 +104,11 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     # дуотон: темні ділянки фото стають темно-синіми, тож тло фото зливається з карткою
     ph = ImageOps.autocontrast(ImageOps.grayscale(photo), cutoff=1)
     ph = ImageOps.colorize(ph, black=BG_BOTTOM, white=(250, 250, 250), mid=(118, 126, 146))
-    target_h = int(H * 0.90)
+    target_h = int(H * 0.72)
     ph = ph.resize((int(ph.width * target_h / ph.height), target_h), Image.LANCZOS)
     ph = ph.filter(ImageFilter.UnsharpMask(radius=2, percent=60, threshold=2))
     px = W - ph.width + int(ph.width * 0.10)
-    card.paste(ph, (px, 170), fade_mask(ph.size))   # верх фото на 170 px: підборіддя вище за підпис, низ обрізається рамкою
+    card.paste(ph, (px, H - ph.height), fade_mask(ph.size))
 
     # затемнення внизу, щоб підпис читався поверх фото
     shade_h = 300
@@ -156,17 +156,17 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
 
     # --- низ: знак «Меморіалу» + підпис
     mark_path = MARKS.get(category)
-    mh = 104
-    base = H - 80 - mh
+    mh = 150 if category == "militaries" else 104   # жетон з ниткою — трохи більший
+    base = H - 80 - 104 - (mh - 104) // 2
     tx = margin
     if mark_path and mark_path.exists():
         mark = Image.open(mark_path).convert("RGBA")
         mark = mark.resize((int(mark.width * mh / mark.height), mh), Image.LANCZOS)
-        card.paste(mark, (margin, base), mark)
+        card.paste(mark, (margin - (10 if category == "militaries" else 0), base), mark)
         tx = margin + mark.width + 26
-    d.text((tx, base + 16), "Хвилина мовчання", font=font("Bold", 34), fill=YELLOW)
+    d.text((tx, base + (mh - 104) // 2 + 16), "Хвилина мовчання", font=font("Bold", 34), fill=YELLOW)
     if credit:
-        d.text((tx, base + 60), "Платформа пам'яті «Меморіал»", font=font("Medium", 24), fill=MUTED)
+        d.text((tx, base + (mh - 104) // 2 + 60), "Платформа пам'яті «Меморіал»", font=font("Medium", 24), fill=MUTED)
     if LOGO.exists():
         # логотип тонколінійний, тож на малому розмірі трохи потовщуємо лінії
         logo = Image.open(LOGO).convert("RGBA")
