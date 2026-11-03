@@ -179,7 +179,7 @@ def verify(card):
 
 
 def today_plan(day: date):
-    cat = WEEKDAY_CATEGORY[day.weekday()]
+    cat = env("FORCE_CATEGORY") or WEEKDAY_CATEGORY[day.weekday()]   # FORCE_CATEGORY — для ручних тестів
     region = LUHANSK if day.weekday() in LUHANSK_DAYS else DONETSK
     return cat, region
 
@@ -189,11 +189,12 @@ def choose(index, published, rejected, day: date, rng: random.Random):
     people = [c for pid, c in index["people"].items() if pid not in used]
     cat, region = today_plan(day)
 
-    # 1) річниця загибелі має пріоритет
+    # 1) річниця загибелі має пріоритет (крім ручного вибору категорії)
     anniv = []
+    forced = bool(env("FORCE_CATEGORY"))
     for c in people:
         d = parse_date(c["fields"].get("Дата загибелі", ""))
-        if d and d[1] == day.month and d[2] == day.day and d[0] < day.year:
+        if not forced and d and d[1] == day.month and d[2] == day.day and d[0] < day.year:
             anniv.append(c)
     # 2) за графіком, 3) запасні варіанти
     order = [anniv,

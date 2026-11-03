@@ -13,6 +13,11 @@ on:
         type: choice
         options: [test, now, auto, index]
         default: test
+      category:
+        description: "Для тесту: кого взяти (auto — за графіком)"
+        type: choice
+        options: [auto, civilians, militaries, children]
+        default: auto
 
 concurrency:
   group: memorial
@@ -42,6 +47,7 @@ jobs:
           PUBLISH_TO_CHANNEL: ${{ vars.PUBLISH_TO_CHANNEL }}
           FB_PAGE_ID: ${{ vars.FB_PAGE_ID }}
           FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
+          FORCE_CATEGORY: ${{ inputs.category != 'auto' && inputs.category || '' }}
         run: python bot.py ${{ inputs.mode || 'auto' }}
 
       - name: Зберегти стан (хто вже був опублікований)
