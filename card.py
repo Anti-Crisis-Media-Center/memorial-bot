@@ -20,7 +20,7 @@ MARKS = {                         # знаки «Меморіалу»: голу�
 }
 
 W, H = 1080, 1080                 # квадрат — добре для Facebook, Instagram і Telegram
-BG_TOP = (35, 51, 87)             # #233357 — темно-синій АКМЦ
+BG_TOP = (35, 51, 88)             # #233358 — темно-синій АКМЦ
 BG_BOTTOM = (16, 22, 38)
 WHITE = (255, 255, 255)
 MUTED = (190, 198, 214)
@@ -29,12 +29,12 @@ LIGHT_BLUE = (58, 94, 178)        # #3A5EB2 — світло-синій АКМЦ
 ACCENT = {                        # колір рамки й позначки міста за категорією
     "civilians": YELLOW,
     "children": YELLOW,
-    "militaries": LIGHT_BLUE,
+    "militaries": (126, 106, 47),  # #7e6a2f — оливковий з брендбука АКМЦ
 }
 SUBTITLE = {                      # колір рядка професії/підрозділу (має бути читабельним на темному)
     "civilians": YELLOW,
     "children": YELLOW,
-    "militaries": (150, 176, 232),  # світліший відтінок #3A5EB2
+    "militaries": YELLOW,
 }
 
 
@@ -104,11 +104,11 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     # дуотон: темні ділянки фото стають темно-синіми, тож тло фото зливається з карткою
     ph = ImageOps.autocontrast(ImageOps.grayscale(photo), cutoff=1)
     ph = ImageOps.colorize(ph, black=BG_BOTTOM, white=(250, 250, 250), mid=(118, 126, 146))
-    target_h = int(H * 0.70)
+    target_h = int(H * 0.90)
     ph = ph.resize((int(ph.width * target_h / ph.height), target_h), Image.LANCZOS)
     ph = ph.filter(ImageFilter.UnsharpMask(radius=2, percent=60, threshold=2))
     px = W - ph.width + int(ph.width * 0.10)
-    card.paste(ph, (px, H - ph.height), fade_mask(ph.size))
+    card.paste(ph, (px, 170), fade_mask(ph.size))   # верх фото на 170 px: підборіддя вище за підпис, низ обрізається рамкою
 
     # затемнення внизу, щоб підпис читався поверх фото
     shade_h = 300
@@ -145,7 +145,7 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
 
     # --- місто і роки життя
     if city:
-        draw_pin(d, margin + 13, y + 14, accent)
+        draw_pin(d, margin + 13, y + 14, YELLOW)
         city_font = font("SemiBold", 34)
         for i, line in enumerate(wrap(d, city, city_font, col_w - 44)[:2]):
             d.text((margin + 42, y), line, font=city_font, fill=WHITE)
