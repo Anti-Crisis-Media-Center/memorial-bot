@@ -79,3 +79,12 @@ def test_schedule():
     from datetime import date
     assert bot.today_plan(date(2026, 11, 3)) == ("militaries", LUHANSK)   # вівторок
     assert bot.today_plan(date(2026, 11, 8)) == ("children", DONETSK)     # неділя
+
+
+def test_birth_city_options():
+    from memorial import birth_city_options, list_url
+    from regions import BIRTH_CITIES, normalize
+    opts = birth_city_options(read("list_militaries.html"))
+    assert opts["Краматорськ"] == ["13"] and opts["Слов'янськ"] == ["74"]
+    assert normalize("Слов'янськ") in [normalize(c) for c in BIRTH_CITIES[DONETSK]]
+    assert list_url("militaries", 2, birth_city_id="13") == "/obituaries/militaries?page=2&filter=l48%3D13"

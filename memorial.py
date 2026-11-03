@@ -88,11 +88,26 @@ def parse_list(html: str, category: str):
     return cards, last_page
 
 
-def list_url(category: str, page: int, death_oblast_code=None) -> str:
+def list_url(category: str, page: int, death_oblast_code=None, birth_city_id=None) -> str:
     url = f"/obituaries/{category}?page={page}"
     if death_oblast_code:
         url += f"&filter=o50%3D{death_oblast_code}"
+    if birth_city_id:
+        url += f"&filter=l48%3D{birth_city_id}"
     return url
+
+
+def birth_city_options(html: str) -> dict:
+    """Назва міста -> [id] з випадного списку «Місто народження» (l48)."""
+    soup = BeautifulSoup(html, "html.parser")
+    out = {}
+    sel = soup.select_one("select#l48")
+    if sel:
+        for o in sel.find_all("option"):
+            name = normalize(o.get_text())
+            if o.get("value") and name:
+                out.setdefault(name, []).append(o["value"])
+    return out
 
 
 # ---------- сторінка людини ----------

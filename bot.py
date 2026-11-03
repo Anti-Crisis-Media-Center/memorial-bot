@@ -20,10 +20,11 @@ import requests
 
 import card
 import memorial
-from memorial import CATEGORIES, fetch, get_person, list_url, parse_date, parse_list
+from memorial import (CATEGORIES, birth_city_options, fetch, get_person, list_url,
+                      parse_date, parse_list)
 from post import build_post, city_line_city
-from regions import (DEATH_OBLAST_CODES, DONETSK, LUHANSK, find_regions,
-                     origin_regions, region_from_field)
+from regions import (BIRTH_CITIES, DEATH_OBLAST_CODES, DONETSK, LUHANSK, find_regions,
+                     normalize, origin_regions, region_from_field)
 
 KYIV = ZoneInfo("Europe/Kyiv")
 STATE = Path(__file__).parent / "state"
@@ -62,28 +63,30 @@ def log(*a):
 # index = {"seen": {cat: [ids]}, "death": {region: [ids]}, "people": {id: card}}
 # У "people" зберігаємо лише тих, хто схожий на людину з наших областей.
 
-def card_regions(card, death_index):
+def card_regions(card, death_index, birth_index=None):
     """Попередня оцінка за карткою у списку. Остаточно перевіряє verify()."""
+    born = {reg for reg, ids in (birth_index or {}).items() if card["id"] in ids}
     if card["cat"] == "militaries":
-        # для військових — лише походження («Родом з Краматорська»), не місце бою
-        return sorted(origin_regions(card["desc"]))
+        # для військових — лише походження («Родом з Краматорська», місто народження), не місце бою
+        return sorted(origin_regions(card["desc"]) | born)
     text = " ".join([card["desc"], " ".join(card["fields"].values())])
-    regs = find_regions(text)
+    regs = find_regions(text) | born
     for reg, ids in death_index.items():
         if card["id"] in ids:
             regs.add(reg)
     return sorted(regs)
 
 
-def crawl(category, index_seen, full, oblast_code=None):
+def crawl(category, index_seen, full, oblast_code=None, birth_city_id=None):
     """Проходить сторінки списку від найновіших. Зупиняється, коли сторінка не дає нічого нового."""
     page, last, new_cards = 1, 1, []
     while page <= last:
-        cards, last = parse_list(fetch(list_url(category, page, oblast_code)), category)
+        cards, last = parse_list(fetch(list_url(category, page, oblast_code, birth_city_id)), category)
         fresh = [c for c in cards if c["id"] not in index_seen]
-        new_cards.extend(cards if oblast_code else fresh)
+        new_cards.extend(cards if (oblast_code or birth_city_id) else fresh)
         index_seen.update(c["id"] for c in cards)
-        log(f"  {category} {'обл.' + str(oblast_code) if oblast_code else ''} стор. {page}/{last}: нових {len(fresh)}")
+        tag = f"обл.{oblast_code}" if oblast_code else (f"нар.{birth_city_id}" if birth_city_id else "")
+        log(f"  {category} {tag} стор. {page}/{last}: нових {len(fresh)}")
         if not full and not fresh:
             break
         page += 1
@@ -107,19 +110,36 @@ def update_index(full=False):
             index["seen"][seen_key] = sorted(seen)
         index["death"][reg] = sorted(ids)
 
+    # хто народився в містах області (фільтр «Місто народження»)
+    options = birth_city_options(fetch(list_url("militaries", 1)))
+    index.setdefault("birth", {})
+    for reg, cities in BIRTH_CITIES.items():
+        ids = set(index["birth"].get(reg, []))
+        for name in cities:
+            for city_id in options.get(normalize(name), []):
+                for cat in CATEGORIES:
+                    seen_key = f"birth-{city_id}-{cat}"
+                    seen = set(index["seen"].get(seen_key, []))
+                    for c in crawl(cat, seen, full, birth_city_id=city_id):
+                        ids.add(c["id"])
+                        index["people"].setdefault(c["id"], c)
+                    index["seen"][seen_key] = sorted(seen)
+        index["birth"][reg] = sorted(ids)
+
     death_index = {r: set(v) for r, v in index["death"].items()}
+    birth_index = {r: set(v) for r, v in index["birth"].items()}
     for cat in CATEGORIES:
         seen = set(index["seen"].get(cat, []))
         for card in crawl(cat, seen, full):
-            regs = card_regions(card, death_index)
-            if regs:
-                card["regions"] = regs
+            if card_regions(card, death_index, birth_index):
                 index["people"][card["id"]] = card
         index["seen"][cat] = sorted(seen)
 
-    # картки, що вже були, могли потрапити у фільтр «область загибелі» пізніше
-    for pid, card in index["people"].items():
-        card["regions"] = card_regions(card, death_index) or card.get("regions", [])
+    # перерахувати регіони для всіх збережених карток
+    for pid, card in list(index["people"].items()):
+        card["regions"] = card_regions(card, death_index, birth_index)
+        if not card["regions"]:
+            del index["people"][pid]
 
     save(INDEX_FILE, index)
     counts = {}
