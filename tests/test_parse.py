@@ -88,3 +88,16 @@ def test_birth_city_options():
     assert opts["Краматорськ"] == ["13"] and opts["Слов'янськ"] == ["74"]
     assert normalize("Слов'янськ") in [normalize(c) for c in BIRTH_CITIES[DONETSK]]
     assert list_url("militaries", 2, birth_city_id="13") == "/obituaries/militaries?page=2&filter=l48%3D13"
+
+
+def test_card_renders():
+    """Картка малюється без помилок (без вирізання тла й пошуку обличчя — для швидкості)."""
+    from unittest import mock
+    from PIL import Image
+    import card
+    with mock.patch("card.cut_person", return_value=None), mock.patch("card.find_face", return_value=None):
+        for cat in ("civilians", "militaries", "children"):
+            data = card.make_card(Image.new("RGB", (400, 500), (120, 120, 120)), category=cat,
+                                  name="Олена Коневська", subtitle="продавчиня", city="Слов'янськ",
+                                  years="1984 — 2026")
+            assert data[:2] == b"\xff\xd8" and len(data) > 10000
