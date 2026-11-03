@@ -26,10 +26,10 @@ WHITE = (255, 255, 255)
 MUTED = (190, 198, 214)
 YELLOW = (255, 204, 51)           # #FFCC33 — жовтий АКМЦ
 LIGHT_BLUE = (58, 94, 178)        # #3A5EB2 — світло-синій АКМЦ
-ACCENT = {                        # колір рамки й позначки міста за категорією
-    "civilians": YELLOW,
-    "children": YELLOW,
-    "militaries": YELLOW,          # рамка однакова для всіх; військових вирізняє жетон
+ACCENT = {                        # колір рамки: білий для всіх
+    "civilians": (235, 238, 245),
+    "children": (235, 238, 245),
+    "militaries": (235, 238, 245),
 }
 SUBTITLE = {                      # професія / підрозділ — без акценту, світлий текст
     "civilians": (226, 230, 238),
@@ -132,34 +132,25 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     card = gradient((W, H), BG_TOP, BG_BOTTOM)
 
     # --- фото: чорно-біле, праворуч унизу, з м'яким переходом у тло
-    cut = cut_person(photo)
-    # дуотон: темні ділянки фото стають темно-синіми
+    # Фото вбудовується як у першій картці: праворуч унизу, виходить за край,
+    # зліва й зверху плавно розчиняється в тлі. Тло самого фото (світла стіна, сніг тощо)
+    # замінюється на тло картки, тож усі фото виглядають однаково спокійно.
     gray = ImageOps.autocontrast(ImageOps.grayscale(photo), cutoff=1)
     ph = ImageOps.colorize(gray, black=BG_BOTTOM, white=(250, 250, 250), mid=(118, 126, 146))
-    target_h = int(H * 0.76)
-    scale = target_h / ph.height
-    size = (int(ph.width * scale), target_h)
+    target_h = int(H * 0.80)
+    size = (int(ph.width * target_h / ph.height), target_h)
     ph = ph.resize(size, Image.LANCZOS).filter(ImageFilter.UnsharpMask(radius=2, percent=60, threshold=2))
-    px = W - 44 - ph.width          # праве ребро фото всередині рамки
-    py = H - 31 - ph.height - 50    # трохи піднято, низ плавно зникає
+    px = W - size[0] + int(size[0] * 0.10)
+    py = H - size[1]
+    cut = cut_person(photo)
     if cut is not None:
-        # тло прибрано: людина на тлі картки + м'яке світло за головою
-        card = Image.alpha_composite(card.convert("RGBA"),
-                                     halo((W, H), (px + size[0] // 2, py + size[1] // 3),
-                                          int(size[0] * 0.6), (70, 90, 140), 70)).convert("RGB")
-        # м'який контур: трохи «з'їдаємо» край і розмиваємо, щоб людина переходила в тло, а не була наклеєна
         alpha = cut.getchannel("A").resize(size, Image.LANCZOS)
-        # спершу «з'їдаємо» край (там лишаються світлі пікселі старого тла — звідси «сяйво»),
-        # потім довго розмиваємо — довгий плавний перехід від людини до тла
-        alpha = alpha.filter(ImageFilter.MinFilter(9)).filter(ImageFilter.MinFilter(9))
-        alpha = alpha.filter(ImageFilter.GaussianBlur(26))
-        # пікселі на краю притемнюємо до кольору тла, щоб світлий край не світився
-        edge_dark = Image.new("RGB", size, BG_BOTTOM)
-        ph = Image.composite(ph, edge_dark, alpha.point(lambda v: min(255, int(v * 1.6))))
-        mask = ImageChops.multiply(alpha, fade_mask(size, left=0, top=0, right=0, bottom=0.22))
-    else:
-        mask = fade_mask(size)
-    card.paste(ph, (px, py), mask)
+        alpha = alpha.filter(ImageFilter.MinFilter(5)).filter(ImageFilter.GaussianBlur(8))
+        under = card.crop((px, py, px + size[0], py + size[1]))
+        if under.size != size:
+            under = under.resize(size)
+        ph = Image.composite(ph, under, alpha)
+    card.paste(ph, (px, py), fade_mask(size, left=0.35, top=0.25, right=0, bottom=0))
 
     # затемнення внизу, щоб підпис читався поверх фото
     shade_h = 300
