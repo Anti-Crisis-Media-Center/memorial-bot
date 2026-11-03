@@ -1,5 +1,7 @@
 {
- "rejected": [],
+ "rejected": [
+  "6904"
+ ],
  "log": [
   {
    "id": "13384",
@@ -170,6 +172,15 @@
    "region": "donetsk",
    "date": "2026-11-03",
    "url": "https://memorial.ua/obituaries/civilians/tkachenko-valentyna-13038",
+   "channel": "-5294316060"
+  },
+  {
+   "id": "5754",
+   "name": "Олексій Блєднов",
+   "cat": "civilians",
+   "region": "luhansk",
+   "date": "2026-11-03",
+   "url": "https://memorial.ua/obituaries/civilians/bliednov-oleksii-5754",
    "channel": "-5294316060"
   }
  ]
