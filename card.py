@@ -29,10 +29,10 @@ PHOTO_MID = (132, 128, 122)       # теплі півтони фото
 PHOTO_LIGHT = (250, 247, 240)
 YELLOW = (255, 204, 51)           # #FFCC33 — жовтий АКМЦ
 LIGHT_BLUE = (58, 94, 178)        # #3A5EB2 — світло-синій АКМЦ
-ACCENT = {                        # колір рамки: жовтий для всіх
-    "civilians": YELLOW,
-    "children": YELLOW,
-    "militaries": YELLOW,
+ACCENT = {                        # колір рамки: білий для всіх
+    "civilians": (235, 235, 235),
+    "children": (235, 235, 235),
+    "militaries": (235, 235, 235),
 }
 SUBTITLE = {                      # професія / підрозділ — без акценту, світлий текст
     "civilians": (226, 230, 238),
@@ -221,13 +221,13 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         size -= 4
     name_font = font("Bold", size)
     for part in name.split():
-        d.text((margin, y), part, font=name_font, fill=WHITE)
+        d.text((margin, y), part, font=name_font, fill=YELLOW)   # ім'я — жовтим
         y += int(size * 1.13)
     y += 14
 
     # --- роки життя одразу під ім'ям
     if years:
-        d.text((margin, y), years, font=font("SemiBold", 36), fill=YELLOW)
+        d.text((margin, y), years, font=font("SemiBold", 36), fill=WHITE)
         y += 62
 
     # --- професія / підрозділ
@@ -262,7 +262,7 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     if LOGO.exists():
         # лінії логотипа вже потовщені у файлі logo.png, тут лише якісне зменшення
         logo = Image.open(LOGO).convert("RGBA")
-        lw = 180
+        lw = 140
         logo = logo.resize((lw, int(logo.height * lw / logo.width)), Image.LANCZOS)
         card.paste(logo, (W - lw - 64, 64), logo)   # правий верхній кут — там темне тло
 
