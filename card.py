@@ -24,12 +24,15 @@ BG_TOP = (35, 51, 88)             # #233358 — темно-синій АКМЦ
 BG_BOTTOM = (16, 22, 38)
 WHITE = (255, 255, 255)
 MUTED = (190, 198, 214)
+PHOTO_DARK = (16, 22, 38)         # тіні фото — як низ тла
+PHOTO_MID = (118, 126, 146)       # півтони фото
+PHOTO_LIGHT = (250, 250, 250)
 YELLOW = (255, 204, 51)           # #FFCC33 — жовтий АКМЦ
 LIGHT_BLUE = (58, 94, 178)        # #3A5EB2 — світло-синій АКМЦ
-ACCENT = {                        # колір рамки: білий для всіх
-    "civilians": (235, 238, 245),
-    "children": (235, 238, 245),
-    "militaries": (235, 238, 245),
+ACCENT = {                        # колір рамки: жовтий для всіх
+    "civilians": YELLOW,
+    "children": YELLOW,
+    "militaries": YELLOW,
 }
 SUBTITLE = {                      # професія / підрозділ — без акценту, світлий текст
     "civilians": (226, 230, 238),
@@ -161,7 +164,7 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     # Фото: людина праворуч, тло фото прибране, краї плавно розчиняються.
     # Масштаб — за обличчям, щоб на всіх картках воно було однакового розміру.
     gray = ImageOps.autocontrast(ImageOps.grayscale(photo), cutoff=1)
-    duo = ImageOps.colorize(gray, black=BG_BOTTOM, white=(250, 250, 250), mid=(118, 126, 146))
+    duo = ImageOps.colorize(gray, black=PHOTO_DARK, white=PHOTO_LIGHT, mid=PHOTO_MID)
     face = find_face(photo)
     if face is not None:
         fx, fy, fw, fh = face
