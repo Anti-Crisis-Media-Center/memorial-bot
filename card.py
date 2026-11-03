@@ -8,7 +8,7 @@ import io
 from pathlib import Path
 
 import requests
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps
+from PIL import ImageEnhance, Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 ROOT = Path(__file__).parent
 FONTS = ROOT / "fonts"
@@ -186,6 +186,45 @@ def torn_paper(seed: int):
     return tex, mask
 
 
+FLOWERS = None                    # шлях до фото квітів (None — без квітів)
+FLOWER_STYLE = "band"             # "band" — рваною смугою внизу, "corner" — рваним аркушем праворуч
+FLOWER_STRENGTH = 1.05            # яскравість квітів (0 — не видно)
+
+
+def torn_band(seed: int, top=690):
+    """Маска смуги з рваним верхнім краєм уздовж низу картки."""
+    import random
+    rnd = random.Random(seed)
+    pts, x, y = [(0, H)], 0, top
+    while x <= W:
+        y = max(top - 40, min(top + 40, y + rnd.randint(-13, 13)))
+        pts.append((x, y)); x += rnd.randint(8, 18)
+    pts.append((W, H))
+    m = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(m).polygon(pts, fill=255)
+    return m
+
+
+def flower_layer(seed: int):
+    """Приглушені квіти на рваному пом'ятому аркуші: (зображення, маска, світлий край)."""
+    fl = Image.open(FLOWERS).convert("RGB")
+    if FLOWER_STYLE == "band":
+        mask = torn_band(seed)
+        f = ImageOps.fit(fl, (W, H - 600), centering=(0.5, 0.85))
+        img = Image.new("RGB", (W, H)); img.paste(f, (0, 600))
+    else:
+        _, mask = torn_paper(seed)
+        img = ImageOps.fit(fl, (W, H), centering=(0.5, 0.85))
+    img = ImageEnhance.Color(img).enhance(0.7)
+    img = ImageEnhance.Brightness(img).enhance(FLOWER_STRENGTH)
+    # пом'ятість: м'які складки поверх квітів
+    folds = Image.effect_noise((W // 6, H // 6), 70).resize((W, H), Image.BICUBIC).filter(ImageFilter.GaussianBlur(7))
+    folds = ImageOps.colorize(folds, black=(195, 195, 195), white=(255, 255, 255))
+    img = ImageChops.multiply(img, folds.convert("RGB"))
+    rim = ImageChops.subtract(mask, mask.filter(ImageFilter.MinFilter(7)))
+    return img, mask, rim
+
+
 def make_card(photo: Image.Image, *, category, name, subtitle, city, years, credit=True) -> bytes:
     accent = ACCENT.get(category, ACCENT["civilians"])
     card = gradient((W, H), BG_TOP, BG_BOTTOM)
@@ -248,6 +287,20 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     sa = Image.linear_gradient("L").resize((W, shade_h)).point(lambda v: int(v * 0.9))
     shade.putalpha(sa)
     card.paste(shade, (0, H - shade_h), shade)
+
+    if FLOWERS:
+        # квіти лежать «за» людиною: показуємо їх лише там, де людини немає
+        person = ImageChops.multiply(mask, ramp).point(lambda v: 255 if v > 60 else v * 4)
+        person = person.filter(ImageFilter.GaussianBlur(3))
+        free = ImageOps.invert(person)
+        fimg, fmask, rim = flower_layer(seed=sum(map(ord, name)))
+        shadow = fmask.filter(ImageFilter.GaussianBlur(14)).point(lambda v: int(v * 0.6))
+        card.paste((0, 0, 0), (-4, -10), ImageChops.multiply(shadow, free))
+        # під підписом ліворуч квіти темнішають, щоб текст читався
+        left = Image.linear_gradient("L").rotate(90, expand=True).resize((W, H))
+        left = left.point(lambda v: 140 + int(v * 115 / 255))
+        card.paste(fimg, (0, 0), ImageChops.multiply(ImageChops.multiply(fmask, free), left))
+        card.paste((236, 233, 226), (0, 0), ImageChops.multiply(rim, free))
 
     d = ImageDraw.Draw(card)
     margin = 72
