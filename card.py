@@ -64,7 +64,7 @@ def gradient(size, top, bottom):
     return g.resize(size)
 
 
-def fade_mask(size, left=0.35, top=0.25):
+def fade_mask(size, left=0.35, top=0.25, right=0.10):
     """Маска, щоб фото плавно розчинялося в тлі зліва і зверху."""
     w, h = size
     mask = Image.new("L", size, 255)
@@ -77,6 +77,9 @@ def fade_mask(size, left=0.35, top=0.25):
                 a = min(a, int(255 * (x / lw) ** 1.4))
             if y < th:
                 a = min(a, int(255 * (y / th) ** 1.4))
+            rw = int(w * right)
+            if rw and x > w - rw:
+                a = min(a, int(255 * ((w - x) / rw) ** 1.4))
             px[x, y] = a
     return mask
 
@@ -104,11 +107,11 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     # дуотон: темні ділянки фото стають темно-синіми, тож тло фото зливається з карткою
     ph = ImageOps.autocontrast(ImageOps.grayscale(photo), cutoff=1)
     ph = ImageOps.colorize(ph, black=BG_BOTTOM, white=(250, 250, 250), mid=(118, 126, 146))
-    target_h = int(H * 0.72)
+    target_h = int(H * 0.66)
     ph = ph.resize((int(ph.width * target_h / ph.height), target_h), Image.LANCZOS)
     ph = ph.filter(ImageFilter.UnsharpMask(radius=2, percent=60, threshold=2))
-    px = W - ph.width + int(ph.width * 0.10)
-    card.paste(ph, (px, H - ph.height), fade_mask(ph.size))
+    px = W - 44 - ph.width          # праве ребро фото всередині рамки
+    card.paste(ph, (px, H - 31 - ph.height), fade_mask(ph.size))
 
     # затемнення внизу, щоб підпис читався поверх фото
     shade_h = 300
@@ -135,6 +138,11 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         y += int(size * 1.13)
     y += 14
 
+    # --- роки життя одразу під ім'ям
+    if years:
+        d.text((margin, y), years, font=font("SemiBold", 36), fill=YELLOW)
+        y += 62
+
     # --- професія / підрозділ
     if subtitle:
         sub_font = font("Medium", 34)
@@ -143,16 +151,13 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
             y += 44
         y += 20
 
-    # --- місто і роки життя
+    # --- місто
     if city:
         draw_pin(d, margin + 13, y + 14, YELLOW)
         city_font = font("SemiBold", 34)
-        for i, line in enumerate(wrap(d, city, city_font, col_w - 44)[:2]):
+        for line in wrap(d, city, city_font, col_w - 44)[:2]:
             d.text((margin + 42, y), line, font=city_font, fill=WHITE)
             y += 44
-        y += 12
-    if years:
-        d.text((margin, y), years, font=font("Medium", 32), fill=YELLOW)
 
     # --- низ: знак «Меморіалу» + підпис
     mark_path = MARKS.get(category)
