@@ -1,0 +1,55 @@
+name: Хвилина мовчання
+
+on:
+  schedule:
+    # Час у UTC. Скрипт сам перевіряє київський час, тож працює і взимку, і влітку.
+    - cron: "15 4 * * *"   # підготовка чернетки (6:15 взимку / 7:15 влітку)
+    - cron: "35 5 * * *"   # публікація о 9:00 влітку
+    - cron: "35 6 * * *"   # публікація о 9:00 взимку
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "test — чернетка тобі; now — опублікувати зараз у CHANNEL_ID; auto — звичайний режим; index — оновити список"
+        type: choice
+        options: [test, now, auto, index]
+        default: test
+
+concurrency:
+  group: memorial
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Запуск
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          REVIEW_CHAT_ID: ${{ secrets.REVIEW_CHAT_ID }}
+          CHANNEL_ID: ${{ vars.CHANNEL_ID }}
+          PUBLISH_TO_CHANNEL: ${{ vars.PUBLISH_TO_CHANNEL }}
+          FB_PAGE_ID: ${{ vars.FB_PAGE_ID }}
+          FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
+        run: python bot.py ${{ inputs.mode || 'auto' }}
+
+      - name: Зберегти стан (хто вже був опублікований)
+        if: always()
+        run: |
+          git config user.name "memorial-bot"
+          git config user.email "memorial-bot@users.noreply.github.com"
+          git add state
+          git diff --cached --quiet || git commit -m "Оновлення стану $(date -u +%F)"
+          git pull --rebase --quiet || true
+          git push || true
