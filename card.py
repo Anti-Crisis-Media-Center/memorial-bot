@@ -147,7 +147,9 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         card = Image.alpha_composite(card.convert("RGBA"),
                                      halo((W, H), (px + size[0] // 2, py + size[1] // 3),
                                           int(size[0] * 0.55), (90, 110, 160), 120)).convert("RGB")
+        # м'який контур: трохи «з'їдаємо» край і розмиваємо, щоб людина переходила в тло, а не була наклеєна
         alpha = cut.getchannel("A").resize(size, Image.LANCZOS)
+        alpha = alpha.filter(ImageFilter.MinFilter(5)).filter(ImageFilter.GaussianBlur(10))
         mask = ImageChops.multiply(alpha, fade_mask(size, left=0, top=0, right=0, bottom=0.22))
     else:
         mask = fade_mask(size)
