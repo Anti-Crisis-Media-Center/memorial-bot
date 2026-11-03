@@ -221,12 +221,10 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     if credit:
         d.text((tx, base + (mh - 104) // 2 + 60), "Платформа пам'яті «Меморіал»", font=font("Medium", 24), fill=MUTED)
     if LOGO.exists():
-        # логотип тонколінійний, тож на малому розмірі трохи потовщуємо лінії
+        # лінії логотипа вже потовщені у файлі logo.png, тут лише якісне зменшення
         logo = Image.open(LOGO).convert("RGBA")
-        lw = 170
+        lw = 180
         logo = logo.resize((lw, int(logo.height * lw / logo.width)), Image.LANCZOS)
-        alpha = logo.getchannel("A").filter(ImageFilter.MaxFilter(3))
-        logo.putalpha(alpha)
         card.paste(logo, (W - lw - 64, 64), logo)   # правий верхній кут — там темне тло
 
     out = io.BytesIO()
