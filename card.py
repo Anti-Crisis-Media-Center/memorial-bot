@@ -19,7 +19,7 @@ MARKS = {                         # знаки «Меморіалу»: голу�
     "militaries": ROOT / "marks" / "tag.png",
 }
 
-W, H = 1080, 1350                 # 4:5 — добре для Facebook, Instagram і Telegram
+W, H = 1080, 1080                 # квадрат — добре для Facebook, Instagram і Telegram
 BG_TOP = (35, 51, 87)             # #233357 — темно-синій АКМЦ
 BG_BOTTOM = (16, 22, 38)
 WHITE = (255, 255, 255)
@@ -104,54 +104,59 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     # дуотон: темні ділянки фото стають темно-синіми, тож тло фото зливається з карткою
     ph = ImageOps.autocontrast(ImageOps.grayscale(photo), cutoff=1)
     ph = ImageOps.colorize(ph, black=BG_BOTTOM, white=(250, 250, 250), mid=(118, 126, 146))
-    target_h = int(H * 0.72)
+    target_h = int(H * 0.80)
     ph = ph.resize((int(ph.width * target_h / ph.height), target_h), Image.LANCZOS)
     ph = ph.filter(ImageFilter.UnsharpMask(radius=2, percent=60, threshold=2))
-    px = W - ph.width + int(ph.width * 0.08)
+    px = W - ph.width + int(ph.width * 0.10)
     card.paste(ph, (px, H - ph.height), fade_mask(ph.size))
 
     # затемнення внизу, щоб підпис читався поверх фото
-    shade_h = 360
+    shade_h = 300
     shade = Image.new("RGBA", (W, shade_h), BG_BOTTOM + (0,))
     sa = Image.linear_gradient("L").resize((W, shade_h)).point(lambda v: int(v * 0.9))
     shade.putalpha(sa)
     card.paste(shade, (0, H - shade_h), shade)
 
     d = ImageDraw.Draw(card)
-    margin = 80
-    text_w = int(W * 0.62)
+    margin = 72
+    col_w = 470                    # ліва колонка тексту — не заходить на обличчя
 
     # --- тонка рамка
     d.rectangle((28, 28, W - 29, H - 29), outline=accent, width=3)
 
-    # --- ім'я (кожне слово з нового рядка, як на картках-пам'ятках)
-    y = 200
-    name_font = font("Bold", 92)
+    # --- ім'я: кожне слово з нового рядка; шрифт зменшується, якщо слово довге
+    y = 96
+    size = 84
+    while size > 52 and max(d.textlength(p, font=font("Bold", size)) for p in name.split()) > col_w + 60:
+        size -= 4
+    name_font = font("Bold", size)
     for part in name.split():
-        for line in wrap(d, part, name_font, W - 2 * margin):
-            d.text((margin, y), line, font=name_font, fill=WHITE)
-            y += 104
-    y += 18
+        d.text((margin, y), part, font=name_font, fill=WHITE)
+        y += int(size * 1.13)
+    y += 14
 
     # --- професія / підрозділ
     if subtitle:
-        sub_font = font("SemiBold", 40)
-        for line in wrap(d, subtitle, sub_font, text_w)[:3]:
+        sub_font = font("SemiBold", 34)
+        for line in wrap(d, subtitle, sub_font, col_w)[:3]:
             d.text((margin, y), line, font=sub_font, fill=SUBTITLE.get(category, YELLOW))
-            y += 52
-        y += 28
+            y += 44
+        y += 20
 
     # --- місто і роки життя
     if city:
-        draw_pin(d, margin + 14, y + 16, accent)
-        d.text((margin + 46, y), city, font=font("SemiBold", 40), fill=WHITE)
-        y += 64
+        draw_pin(d, margin + 13, y + 14, accent)
+        city_font = font("SemiBold", 34)
+        for i, line in enumerate(wrap(d, city, city_font, col_w - 44)[:2]):
+            d.text((margin + 42, y), line, font=city_font, fill=WHITE)
+            y += 44
+        y += 12
     if years:
-        d.text((margin, y), years, font=font("Medium", 36), fill=MUTED)
+        d.text((margin, y), years, font=font("Medium", 32), fill=YELLOW)
 
     # --- низ: знак «Меморіалу» + підпис
     mark_path = MARKS.get(category)
-    mh = 120
+    mh = 104
     base = H - 80 - mh
     tx = margin
     if mark_path and mark_path.exists():
@@ -159,17 +164,17 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         mark = mark.resize((int(mark.width * mh / mark.height), mh), Image.LANCZOS)
         card.paste(mark, (margin, base), mark)
         tx = margin + mark.width + 26
-    d.text((tx, base + 22), "Хвилина мовчання", font=font("SemiBold", 32), fill=WHITE)
+    d.text((tx, base + 16), "Хвилина мовчання", font=font("Bold", 34), fill=YELLOW)
     if credit:
-        d.text((tx, base + 66), "Платформа пам'яті «Меморіал»", font=font("Medium", 24), fill=MUTED)
+        d.text((tx, base + 60), "Платформа пам'яті «Меморіал»", font=font("Medium", 24), fill=MUTED)
     if LOGO.exists():
         # логотип тонколінійний, тож на малому розмірі трохи потовщуємо лінії
         logo = Image.open(LOGO).convert("RGBA")
-        lw = 190
+        lw = 170
         logo = logo.resize((lw, int(logo.height * lw / logo.width)), Image.LANCZOS)
         alpha = logo.getchannel("A").filter(ImageFilter.MaxFilter(3))
         logo.putalpha(alpha)
-        card.paste(logo, (W - lw - 70, 70), logo)   # правий верхній кут — там темне тло
+        card.paste(logo, (W - lw - 64, 64), logo)   # правий верхній кут — там темне тло
 
     out = io.BytesIO()
     card.save(out, "JPEG", quality=92)
