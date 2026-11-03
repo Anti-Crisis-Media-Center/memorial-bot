@@ -110,10 +110,12 @@ def update_index(full=False):
             index["seen"][seen_key] = sorted(seen)
         index["death"][reg] = sorted(ids)
 
-    # хто народився в містах області (фільтр «Місто народження»)
-    options = birth_city_options(fetch(list_url("militaries", 1)))
+    # хто народився в містах області (фільтр «Місто народження»).
+    # ~300 запитів, тому лише раз на тиждень (у неділю), при повному оновленні або якщо ще не робили
     index.setdefault("birth", {})
-    for reg, cities in BIRTH_CITIES.items():
+    weekly = full or not index["birth"] or datetime.now(KYIV).weekday() == 6
+    options = birth_city_options(fetch(list_url("militaries", 1))) if weekly else {}
+    for reg, cities in (BIRTH_CITIES.items() if weekly else []):
         ids = set(index["birth"].get(reg, []))
         for name in cities:
             for city_id in options.get(normalize(name), []):
