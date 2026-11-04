@@ -343,8 +343,8 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
                 ox -= int(head_right - (W - 60))
         # тіло обрізане правим краєм фото → ставимо цей зріз упритик до правого краю картки
         # (якщо при цьому голова з вухами лишається в рамці)
-        a_np = alpha.crop((size[0] - 3, 0, size[0], size[1])).getextrema()
-        if a_np[1] > 100:
+        a_np = alpha.crop((size[0] - 10, 0, size[0], size[1])).getextrema()
+        if a_np[1] > 60:
             ox_edge = W - size[0]
             if face is not None:                # вухо не далі ніж на 40 px від краю картки
                 ox_edge = min(ox_edge, int(W - 40 - (fx + fw * 1.2) * scale))
