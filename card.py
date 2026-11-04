@@ -189,7 +189,10 @@ def torn_strip(category: str, seed: int):
     hills, mid = _noise1d(rnd, n, 230), _noise1d(rnd, n, 55, sharp=True)
     fine, fine2 = _noise1d(rnd, n, 12, sharp=True), _noise1d(rnd, n, 5, sharp=True)
     width = _noise1d(rnd, n, 120)
-    x0 = 520 + rnd.randint(-20, 20)            # клин починається правіше підпису
+    # Смуга йде через усю ширину: зліва низько, під підписом «Хвилина мовчання»,
+    # далі піднімається праворуч за людиною
+    x0 = 470 + rnd.randint(-30, 30)            # звідки починається підйом
+    y_left = H - 40 + rnd.randint(-6, 6)       # під підписом — тонка смуга біля низу
     y_right = 420 + rnd.randint(-30, 30)
     color = Image.new("L", (W, H), 0)
     paper = Image.new("L", (W, H), 0)
@@ -197,11 +200,12 @@ def torn_strip(category: str, seed: int):
     for i in range(0, n, 2):
         x = i - 20
         t = min(1.0, max(0.0, (x - x0) / (W - x0)))
-        base = H + 70 + (y_right - H - 70) * (t ** 0.8)
-        y = base + 105 * hills[i] * t + 26 * mid[i] + 8 * fine[i] + 3 * fine2[i]
+        base = y_left + (y_right - y_left) * (t ** 0.8)
+        amp = 0.25 + 0.75 * t                  # біля підпису край спокійніший
+        y = base + 105 * hills[i] * t + amp * 26 * mid[i] + 8 * fine[i] + 3 * fine2[i]
         cpts.append((x, y))
-        ppts.append((x, y - (14 + 56 * (width[i] + 1) / 2) - 14 * abs(fine2[i]) - 10 * abs(mid[i]) - rnd.uniform(0, 5)))
-    corner = [(W + 20, H + 20), (x0 - 200, H + 20)]
+        ppts.append((x, y - (0.5 + 0.5 * t) * (14 + 56 * (width[i] + 1) / 2 + 14 * abs(fine2[i]) + 10 * abs(mid[i])) - rnd.uniform(0, 5)))
+    corner = [(W + 20, H + 20), (-20, H + 20)]
     ImageDraw.Draw(color).polygon(cpts + corner, fill=255)
     ImageDraw.Draw(paper).polygon(ppts + corner, fill=255)
     # волокна: розмитий край + шум → нерівний «пухнастий» обрив паперу
@@ -325,7 +329,7 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     # --- низ: знак «Меморіалу» + підпис
     mark_path = MARKS.get(category)
     mh = 150 if category == "militaries" else 104   # жетон з ниткою — трохи більший
-    base = H - 80 - 104 - (mh - 104) // 2
+    base = H - 130 - 104 - (mh - 104) // 2      # підпис трохи вище — під ним іде рвана смуга
     tx = margin
     if mark_path and mark_path.exists():
         mark = Image.open(mark_path).convert("RGBA")
