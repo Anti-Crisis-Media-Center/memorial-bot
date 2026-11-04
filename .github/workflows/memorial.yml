@@ -9,9 +9,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "test — чернетка тобі; now — опублікувати зараз у CHANNEL_ID; auto — звичайний режим; index — оновити список"
+        description: "replace — інша людина; nocut — фото без вирізання; skip — не публікувати сьогодні; test — чернетка тобі; now — опублікувати зараз; auto — звичайний режим; index — оновити список"
         type: choice
-        options: [test, now, auto, index]
+        options: [replace, nocut, skip, test, now, auto, index]
         default: test
       category:
         description: "Для тесту: кого взяти (auto — за графіком)"
@@ -20,7 +20,8 @@ on:
         default: auto
 
 concurrency:
-  group: memorial
+  # правки чернетки (replace/nocut/skip) не чекають на ранковий запуск, що спить до 9:00
+  group: memorial-${{ contains(fromJSON('["replace","nocut","skip"]'), inputs.mode) && 'edit' || 'main' }}
   cancel-in-progress: false
 
 permissions:

@@ -285,7 +285,7 @@ def background(category: str):
     return Image.composite(lifted, bg, dark.filter(ImageFilter.GaussianBlur(1)))
 
 
-def make_card(photo: Image.Image, *, category, name, subtitle, city, years, credit=True) -> bytes:
+def make_card(photo: Image.Image, *, category, name, subtitle, city, years, credit=True, nocut=False) -> bytes:
     accent = ACCENT.get(category, ACCENT["civilians"])
     card = background(category)
 
@@ -321,7 +321,7 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     size = (max(1, int(photo.width * scale)), max(1, int(photo.height * scale)))
     duo = duo.resize(size, Image.LANCZOS).filter(ImageFilter.UnsharpMask(radius=2, percent=60, threshold=2))
 
-    cut = cut_person(photo)
+    cut = None if nocut else cut_person(photo)       # nocut — редакторка попросила фото без вирізання
     on_paper = cut is not None and BACKGROUNDS.get(category)
     if on_paper:
         # на підкладці з папером людина вирізана чітко по контуру, без розчинення країв;
@@ -380,6 +380,23 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     if BACKGROUNDS.get(category):
         ramp = Image.new("L", (W, H), 255)      # людина ціла, текст лягає поверх
     card.paste(layer, (0, 0), ImageChops.multiply(mask, ramp))
+
+    if BACKGROUNDS.get(category):
+        # м'яка тінь у правому нижньому куті: тіло плавно темніє і зливається з тлом —
+        # так ховаються дрібні недоліки вирізання збоку. Обличчя тінь не зачіпає.
+        gx = Image.linear_gradient("L").rotate(90, expand=True).resize((W, H))          # 0 зліва → 255 справа
+        gy = Image.linear_gradient("L").resize((W, H))                                   # 0 вгорі → 255 внизу
+        diag = ImageChops.multiply(gx.point(lambda v: max(0, (v - 150) * 255 // 105)),
+                                   gy.point(lambda v: max(0, (v - 90) * 255 // 165)))
+        if face is not None:
+            fcx, fcy_ = ox + (fx + fw / 2) * scale, oy + (fy + fh / 2) * scale
+            r = fw * scale * 1.1
+            protect = Image.new("L", (W, H), 255)
+            ImageDraw.Draw(protect).ellipse((fcx - r, fcy_ - r * 1.3, fcx + r, fcy_ + r * 1.3), fill=0)
+            diag = ImageChops.multiply(diag, protect.filter(ImageFilter.GaussianBlur(r * 0.5)))
+        person_m = ImageChops.multiply(mask, ramp)
+        strength = ImageChops.add(person_m.point(lambda v: int(v * 0.55)), Image.new("L", (W, H), 45))
+        card.paste((24, 23, 22), (0, 0), ImageChops.multiply(diag, strength))
 
     # затемнення внизу, щоб підпис читався поверх фото
     shade_h = 300
@@ -470,7 +487,7 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     return out.getvalue()
 
 
-def card_for_person(person, city: str) -> bytes:
+def card_for_person(person, city: str, nocut: bool = False) -> bytes:
     from memorial import parse_date
     raw = requests.get(person.photo, timeout=60).content
     photo = Image.open(io.BytesIO(raw))
@@ -482,4 +499,4 @@ def card_for_person(person, city: str) -> bytes:
     dd = parse_date(person.f("Дата загибелі"))
     years = f"{b[0]} — {dd[0]}" if b and dd else ""
     return make_card(photo, category=person.cat, name=person.name, subtitle=subtitle,
-                     city=city, years=years)
+                     city=city, years=years, nocut=nocut)

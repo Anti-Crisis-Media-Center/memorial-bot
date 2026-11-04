@@ -10,6 +10,7 @@
 import json
 import os
 import random
+import subprocess
 import sys
 import time
 from datetime import date, datetime, timedelta
@@ -232,8 +233,8 @@ def tg(method, **params):
     return data["result"]
 
 
-def make_card(person, region):
-    return card.card_for_person(person, city_line_city(person, region))
+def make_card(person, region, nocut=False):
+    return card.card_for_person(person, city_line_city(person, region), nocut=nocut)
 
 
 def tg_send(chat_id, text, card_bytes, silent=True):
@@ -310,7 +311,7 @@ def prepare(day: date, dry_run=False):
     text = build_post(person, region)
     note = ("👆 Чернетка «Хвилини мовчання». "
             + ("Це тест, у канал не піде." if dry_run else
-               f"Вийде о 9:00 {day.strftime('%d.%m')}. Щоб скасувати — напиши мені «стоп»."))
+               f"Вийде о 9:00 {day.strftime('%d.%m')}.\n\n" + EDIT_HELP))
     tg_send(env("REVIEW_CHAT_ID"), text, make_card(person, region), silent=False)
     tg("sendMessage", chat_id=env("REVIEW_CHAT_ID"), text=note)
     if not dry_run:
@@ -318,6 +319,41 @@ def prepare(day: date, dry_run=False):
                             "region": region, "preview_ts": int(time.time()),
                             "published": False})
     return person, region
+
+
+EDIT_HELP = ("Щоб змінити: GitHub → репозиторій memorial-bot → Actions → «Хвилина мовчання» → "
+             "Run workflow → mode:\n"
+             "• replace — інша людина замість цієї\n"
+             "• nocut — те саме фото без вирізання (м'яким овалом)\n"
+             "• skip — сьогодні не публікувати")
+
+
+def edit(action):
+    """Правки редакторки до сьогоднішньої чернетки (до 9:00)."""
+    today = datetime.now(KYIV).date().isoformat()
+    pending = load(PENDING_FILE, {})
+    if pending.get("date") != today or pending.get("published"):
+        tg("sendMessage", chat_id=env("REVIEW_CHAT_ID"),
+           text="На сьогодні немає неопублікованої чернетки — змінювати нічого.")
+        return
+    person = memorial.Person(**pending["person"])
+    if action == "skip":
+        pending["published"] = "cancelled"
+        save(PENDING_FILE, pending)
+        tg("sendMessage", chat_id=env("REVIEW_CHAT_ID"), text="Добре, сьогодні «Хвилину мовчання» не публікуємо.")
+    elif action == "nocut":
+        pending["nocut"] = True
+        save(PENDING_FILE, pending)
+        tg_send(env("REVIEW_CHAT_ID"), build_post(person, pending["region"]),
+                make_card(person, pending["region"], nocut=True), silent=False)
+        tg("sendMessage", chat_id=env("REVIEW_CHAT_ID"), text="👆 Нова картка — фото без вирізання. Вийде о 9:00.")
+    elif action == "replace":
+        published = load(PUBLISHED_FILE, {"rejected": [], "log": []})
+        published["rejected"].append(person.id)
+        save(PUBLISHED_FILE, published)
+        if not os.environ.get("FORCE_CATEGORY"):
+            os.environ["FORCE_CATEGORY"] = person.cat                # та сама категорія
+        prepare(datetime.now(KYIV).date())
 
 
 def publish(pending):
@@ -332,7 +368,7 @@ def publish(pending):
 
     to_channel = env("PUBLISH_TO_CHANNEL", "false").lower() == "true"
     target = env("CHANNEL_ID") if to_channel else env("REVIEW_CHAT_ID")
-    tg_send(target, build_post(person, region), make_card(person, region), silent=True)
+    tg_send(target, build_post(person, region), make_card(person, region, nocut=pending.get("nocut", False)), silent=True)
     log("Telegram: опубліковано в", "канал" if to_channel else "чат перевірки (тестовий режим)")
 
     if to_channel:
@@ -374,6 +410,12 @@ def auto():
         wait = (nine - now).total_seconds()
         log(f"Чекаю до 9:00 ({int(wait // 60)} хв)")
         time.sleep(wait)
+        # редакторка могла змінити чернетку, поки ми чекали — беремо свіжий стан із репозиторію
+        subprocess.run(["git", "pull", "--quiet", "--rebase", "--autostash"], check=False)
+        pending = load(PENDING_FILE, {})
+        if pending.get("date") != today.isoformat() or pending.get("published"):
+            log("Чернетку скасовано або вже опубліковано.")
+            return
     publish(pending)
 
 
@@ -391,6 +433,8 @@ def main():
         publish(pending)
     elif mode == "auto":
         auto()
+    elif mode in ("replace", "nocut", "skip"):
+        edit(mode)
     else:
         print(__doc__)
 
