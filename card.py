@@ -201,6 +201,8 @@ def background(category: str):
     bg = Image.open(path).convert("RGB")
     bg = bg.resize((W, round(bg.height * W / bg.width)), Image.LANCZOS)
     bg = bg.crop((0, bg.height - H, W, bg.height))
+    if Path(path).stem.endswith("_birds"):        # тло з птахами вже готове: темний графіт, світлі птахи
+        return bg
     # темна частина підкладки майже чорна — піднімаємо її до графіту АКМЦ (#3c3c3c),
     # зберігаючи ледь помітну текстуру; папір і кольорова смуга не змінюються
     dark = ImageOps.grayscale(bg).point(lambda v: 255 if v < 40 else max(0, 255 - (v - 40) * 12))
