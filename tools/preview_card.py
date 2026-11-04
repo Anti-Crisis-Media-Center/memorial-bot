@@ -8,8 +8,17 @@ from PIL import Image
 import bot, card, memorial
 index = json.load(open("state/index.json"))
 people = index.get("people", index)
+import os
 tiles = []
-for pid in sys.argv[1:]:
+jobs = []
+for arg in sys.argv[1:]:                      # ID або ID@файл_фону (варіант синього для цивільних)
+    pid, _, bg = arg.partition("@")
+    jobs.append((pid, bg))
+for pid, bg in jobs:
+    if bg:
+        os.environ["CIVIL_BG"] = bg
+    else:
+        os.environ.pop("CIVIL_BG", None)
     p = memorial.parse_person(memorial.fetch(people[pid]["url"]), people[pid]["url"], people[pid]["cat"])
     region = "luhansk" if "Луган" in json.dumps(people[pid], ensure_ascii=False) else "donetsk"
     tiles.append(Image.open(io.BytesIO(bot.make_card(p, region))).resize((720, 720)))

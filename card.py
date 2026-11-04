@@ -185,9 +185,17 @@ BACKGROUNDS = {                   # підкладка від дизайнера
 }
 
 
+def _bg_path(category):
+    import os
+    alt = os.environ.get("CIVIL_BG")
+    if alt and category in ("civilians", "children"):
+        return ROOT / "backgrounds" / alt
+    return BACKGROUNDS.get(category)
+
+
 def background(category: str):
     """Підкладка картки: файл дизайнера, обрізаний до квадрата (низ із папером зберігається)."""
-    path = BACKGROUNDS.get(category)
+    path = _bg_path(category)
     if not path or not Path(path).exists():
         return gradient((W, H), BG_TOP, BG_BOTTOM)
     bg = Image.open(path).convert("RGB")
@@ -248,6 +256,14 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
             head_right = ox + (fx + fw * 1.25) * scale
             if head_right > W - 60:
                 ox -= int(head_right - (W - 60))
+        # тіло обрізане правим краєм фото → ставимо цей зріз упритик до правого краю картки
+        # (якщо при цьому голова з вухами лишається в рамці)
+        a_np = alpha.crop((size[0] - 3, 0, size[0], size[1])).getextrema()
+        if a_np[1] > 100:
+            ox_edge = W - size[0]
+            head_ok = face is None or ox_edge + (fx + fw * 1.25) * scale <= W - 60
+            if head_ok and ox_edge > ox:
+                ox = ox_edge
         right_in = ox + size[0] < W - 2
         # спершу чіткий контур, а розчиняється лише вузька смужка (~35 px) біля краю фото
         edge = 35 / size[0]
