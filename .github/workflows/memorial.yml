@@ -41,7 +41,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.u2net
-          key: rembg-birefnet-portrait-v1
+          key: models-birefnet-u2net-esrgan-v2
 
       - run: pip install -r requirements.txt
 

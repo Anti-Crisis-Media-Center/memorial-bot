@@ -136,22 +136,86 @@ def find_face(photo: Image.Image):
     return x, y, fw, fh
 
 
+ESRGAN_URL = "https://huggingface.co/SceneWorks/real-esrgan-onnx/resolve/main/real_esrgan_x2.onnx"
+_UPSCALER = None
+
+
+def _models_dir() -> Path:
+    import os
+    return Path(os.environ.get("U2NET_HOME", Path.home() / ".u2net"))
+
+
+def upscale(photo: Image.Image) -> Image.Image:
+    """Збільшує маленьке фото вдвічі нейромережею Real-ESRGAN (з домальовуванням деталей).
+    Фото з Меморіалу зазвичай 400×500 — після збільшення контур і обличчя чіткіші.
+    Якщо модель недоступна — повертає фото як є."""
+    global _UPSCALER
+    if max(photo.size) >= 1000:
+        return photo
+    try:
+        import numpy as np
+        import onnxruntime as ort
+        if _UPSCALER is None:
+            path = _models_dir() / "real_esrgan_x2.onnx"
+            if not path.exists():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with requests.get(ESRGAN_URL, stream=True, timeout=120) as r:
+                    r.raise_for_status()
+                    with open(path.with_suffix(".part"), "wb") as f:
+                        for chunk in r.iter_content(1 << 20):
+                            f.write(chunk)
+                path.with_suffix(".part").rename(path)
+            _UPSCALER = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+        x = np.asarray(photo.convert("RGB"), dtype="float32").transpose(2, 0, 1)[None] / 255.0
+        y = _UPSCALER.run(None, {_UPSCALER.get_inputs()[0].name: x})[0][0]
+        y = (y.clip(0, 1) * 255).round().astype("uint8").transpose(1, 2, 0)
+        return Image.fromarray(y)
+    except Exception as e:                                   # без збільшення картка все одно буде
+        print("upscale: пропущено —", e)
+        return photo
+
+
 def cut_person(photo: Image.Image):
-    """Вирізає людину з фото (прибирає тло). Якщо бібліотеки немає — повертає None."""
+    """Вирізає людину з фото (прибирає тло).
+
+    Контур веде birefnet-portrait з обробкою країв (alpha matting) — так акуратніше волосся.
+    Друга модель, u2net_human_seg, «бачить» лише людину: великі шматки, які birefnet
+    вважає людиною, а вона — ні (рюкзак, чужа рука), вирізаються. Дрібні розбіжності
+    по краю не чіпаємо, щоб контур лишався рівним.
+    Якщо моделі сильно не згодні між собою (темний одяг на темному тлі тощо) — повертає
+    None, і картка бере фото м'яким овалом без вирізання."""
     global _SESSION
     try:
+        import cv2
+        import numpy as np
         from rembg import new_session, remove
     except ImportError:
         return None
     if _SESSION is None:
-        # дві моделі: birefnet точно веде контур, u2net_human_seg бачить лише людину.
-        # Беремо перетин масок — так зникають і камені під рукою, і рюкзак чи інші речі поруч
         _SESSION = [new_session("birefnet-portrait"), new_session("u2net_human_seg")]
-    sessions = _SESSION if isinstance(_SESSION, list) else [_SESSION]
     rgb = photo.convert("RGB")
-    out = remove(rgb, session=sessions[0])
-    for sess in sessions[1:]:
-        out.putalpha(ImageChops.darker(out.getchannel("A"), remove(rgb, session=sess).getchannel("A")))
+    try:
+        out = remove(rgb, session=_SESSION[0], alpha_matting=True,
+                     alpha_matting_foreground_threshold=235,
+                     alpha_matting_background_threshold=15, alpha_matting_erode_size=8)
+    except Exception:                                        # matting інколи падає — тоді без нього
+        out = remove(rgb, session=_SESSION[0])
+    a = np.array(out.getchannel("A")).astype("float32")
+    b = np.array(remove(rgb, session=_SESSION[1]).getchannel("A")).astype("float32")
+    # великі «чужі» шматки: є в birefnet, немає в human_seg
+    foreign = ((a > 128) & (b < 40)).astype("uint8")
+    k = max(5, int(min(a.shape) * 0.035)) | 1
+    foreign = cv2.morphologyEx(foreign, cv2.MORPH_OPEN, np.ones((k, k), "uint8"))
+    foreign = cv2.dilate(foreign, np.ones((7, 7), "uint8"))
+    a = a * (1 - foreign)
+    # наскільки моделі згодні щодо силуету
+    am, bm = a > 128, b > 128
+    union = (am | bm).sum()
+    iou = (am & bm).sum() / union if union else 0
+    if iou < 0.80:
+        print(f"cut_person: моделі не згодні (IoU {iou:.2f}) — фото без вирізання")
+        return None
+    out.putalpha(Image.fromarray(a.clip(0, 255).astype("uint8")))
     return out
 
 
@@ -217,6 +281,7 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     # --- фото: чорно-біле, праворуч унизу, з м'яким переходом у тло
     # Фото: людина праворуч, тло фото прибране, краї плавно розчиняються.
     # Масштаб — за обличчям, щоб на всіх картках воно було однакового розміру.
+    photo = upscale(photo)
     gray = ImageOps.autocontrast(ImageOps.grayscale(photo), cutoff=1)
     duo = ImageOps.colorize(gray, black=PHOTO_DARK, white=PHOTO_LIGHT, mid=PHOTO_MID)
     face = find_face(photo)
@@ -251,8 +316,10 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         # на підкладці з папером людина вирізана чітко по контуру, без розчинення країв;
         # плавно зникає лише низ, якщо фото не дістає до низу картки
         alpha = cut.getchannel("A").resize(size, Image.LANCZOS)
-        alpha = alpha.point(lambda v: 0 if v < 40 else min(255, int((v - 40) * 255 / 120)))
-        alpha = alpha.filter(ImageFilter.GaussianBlur(2.5))   # м'який стик силуету з тлом
+        # контур уже акуратний (matting); прибираємо ледь помітний серпанок і м'яко розмиваємо край на 1–2 px
+        alpha = alpha.point(lambda v: 0 if v < 18 else min(255, int((v - 18) * 255 / 190)))
+        alpha = keep_main_figure(alpha)
+        alpha = alpha.filter(ImageFilter.GaussianBlur(1.3))
         # людина не заходить на колонку тексту: зсуваємо праворуч (обличчя лишається в кадрі)
         bbox = alpha.point(lambda v: 255 if v > 40 else 0).getbbox()
         if bbox and ox + bbox[0] < 545:
@@ -279,6 +346,14 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         alpha = cut.getchannel("A").resize(size, Image.LANCZOS)
         alpha = alpha.filter(ImageFilter.MinFilter(5)).filter(ImageFilter.GaussianBlur(8))
         alpha = ImageChops.multiply(alpha, fade_mask(size, left=0, top=0, right=0.06, bottom=0.18))
+    elif BACKGROUNDS.get(category):
+        # вирізати надійно не вийшло — фото м'яким овалом навколо обличчя, без різких меж
+        alpha = Image.new("L", size, 0)
+        cx = (fx + fw / 2) * scale if face is not None else size[0] / 2
+        cy = (fy + fh / 2) * scale if face is not None else size[1] * 0.4
+        rx, ry = size[0] * 0.48, size[1] * 0.75
+        ImageDraw.Draw(alpha).ellipse((cx - rx, cy - ry * 0.6, cx + rx, cy + ry * 1.6), fill=255)
+        alpha = alpha.filter(ImageFilter.GaussianBlur(size[0] * 0.08))
     else:
         alpha = fade_mask(size, left=0.35, top=0.25, right=0.06, bottom=0.18)
 
@@ -289,18 +364,18 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     # ліва колонка з текстом лишається чистою: людина м'яко зникає ліворуч
     ramp = Image.linear_gradient("L").rotate(90, expand=True).resize((W, H))   # 0 зліва → 255 справа
     ramp = ramp.point(lambda v: 0 if v < 100 else min(255, int((v - 100) * 255 / 70)))
-    if on_paper:
+    if BACKGROUNDS.get(category):
         ramp = Image.new("L", (W, H), 255)      # людина ціла, текст лягає поверх
     card.paste(layer, (0, 0), ImageChops.multiply(mask, ramp))
 
     # затемнення внизу, щоб підпис читався поверх фото
     shade_h = 300
     shade = Image.new("RGBA", (W, shade_h), BG_BOTTOM + (0,))
-    sa = Image.linear_gradient("L").resize((W, shade_h)).point(lambda v: int(v * (0.55 if on_paper else 0.9)))
+    sa = Image.linear_gradient("L").resize((W, shade_h)).point(lambda v: int(v * (0.55 if BACKGROUNDS.get(category) else 0.9)))
     shade.putalpha(sa)
     card.paste(shade, (0, H - shade_h), shade)
 
-    if on_paper:
+    if BACKGROUNDS.get(category):
         # темна підкладка під підписом «Хвилина мовчання» зліва внизу — для контрасту
         fh_, fw_ = 300, 760
         vy = Image.linear_gradient("L").resize((fw_, fh_))                       # 0 вгорі → 255 внизу
