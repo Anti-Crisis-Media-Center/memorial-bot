@@ -179,8 +179,8 @@ def keep_main_figure(alpha: Image.Image) -> Image.Image:
 
 
 BACKGROUNDS = {                   # підкладка від дизайнера: рваний папір кольору категорії
-    "civilians": ROOT / "backgrounds" / "civilians.jpg",
-    "children": ROOT / "backgrounds" / "civilians.jpg",
+    "civilians": ROOT / "backgrounds" / "civilians_warm.jpg",   # теплий графітово-синій
+    "children": ROOT / "backgrounds" / "civilians_warm.jpg",
     "militaries": ROOT / "backgrounds" / "militaries.jpg",
 }
 
@@ -261,9 +261,9 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         a_np = alpha.crop((size[0] - 3, 0, size[0], size[1])).getextrema()
         if a_np[1] > 100:
             ox_edge = W - size[0]
-            head_ok = face is None or ox_edge + (fx + fw * 1.25) * scale <= W - 60
-            if head_ok and ox_edge > ox:
-                ox = ox_edge
+            if face is not None:                # вухо не далі ніж на 40 px від краю картки
+                ox_edge = min(ox_edge, int(W - 40 - (fx + fw * 1.2) * scale))
+            ox = max(ox, ox_edge)
         right_in = ox + size[0] < W - 2
         # спершу чіткий контур, а розчиняється лише вузька смужка (~35 px) біля краю фото
         edge = 35 / size[0]
