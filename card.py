@@ -158,10 +158,23 @@ def halo(size, center, radius, color, strength):
     return layer
 
 
+def keep_main_figure(alpha: Image.Image) -> Image.Image:
+    """Залишає в масці лише найбільшу суцільну фігуру (людину), прибирає залишки тла."""
+    import cv2
+    import numpy as np
+    a = np.array(alpha)
+    n, labels, stats, _ = cv2.connectedComponentsWithStats((a > 100).astype("uint8"), 8)
+    if n <= 2:
+        return alpha
+    main = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    keep = cv2.dilate((labels == main).astype("uint8"), np.ones((7, 7), "uint8"))
+    return Image.fromarray((a * keep).astype("uint8"))
+
+
 BACKGROUNDS = {                   # підкладка від дизайнера: рваний папір кольору категорії
     "civilians": ROOT / "backgrounds" / "civilians.jpg",
     "children": ROOT / "backgrounds" / "civilians.jpg",
-    "militaries": ROOT / "backgrounds" / "civilians.jpg",   # синій папір для всіх
+    "militaries": ROOT / "backgrounds" / "militaries.jpg",
 }
 
 
@@ -192,15 +205,17 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         # якщо фото по плечі — збільшуємо, щоб низ фото діставав до низу картки (не «висіло» в повітрі),
         # але обличчя не більше 32% висоти картки
         scale = max(scale, (1 - FACE_CY) * H / max(1, photo.height - fcy))
-        scale = min(scale, 0.32 * H / fh, 2.4 * H / photo.height)
+        paper = bool(BACKGROUNDS.get(category))
+        scale = min(scale, (0.38 if paper else 0.32) * H / fh, 2.4 * H / photo.height)
         ox = int(FACE_CX * W - (fx + fw / 2) * scale)
         oy = int(FACE_CY * H - (fy + fh / 2) * scale)
         # фото по плечі, яке не дістає до низу: опускаємо його (обличчя не нижче 60% висоти),
         # щоб людина не «висіла» в повітрі
         bottom = oy + photo.height * scale
-        if bottom < H - 31:
-            max_shift = int(0.60 * H - (oy + fcy * scale))
-            oy += max(0, min(int(H - 31 - bottom), max_shift))
+        target = H if paper else H - 31        # на папері людина стоїть на самому низу картки
+        if bottom < target:
+            max_shift = int((0.74 if paper else 0.60) * H - (oy + fcy * scale))
+            oy += max(0, min(int(target - bottom), max_shift))
     else:                                                  # обличчя не знайдено — як раніше
         scale = 0.80 * H / photo.height
         ox = W - int(photo.width * scale * 0.90)
@@ -221,10 +236,8 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         if bbox and ox + bbox[0] < 545:
             face_x = ox + (fx + fw / 2) * scale if face is not None else ox + size[0] / 2
             ox += int(max(0, min(545 - (ox + bbox[0]), W - 190 - face_x)))
-        # там, де тіло обрізане рамкою фото (низ, лівий край), — короткий м'який перехід,
-        # щоб не було прямого зрізу
-        alpha = ImageChops.multiply(alpha, fade_mask(size, left=0.06, top=0, right=0,
-                                                     bottom=0.16 if oy + size[1] < H - 2 else 0))
+        # лишаємо тільки людину: окремі шматки тла, які модель прихопила, прибираємо
+        alpha = keep_main_figure(alpha)
     elif cut is not None:
         alpha = cut.getchannel("A").resize(size, Image.LANCZOS)
         alpha = alpha.filter(ImageFilter.MinFilter(5)).filter(ImageFilter.GaussianBlur(8))
