@@ -161,7 +161,7 @@ def halo(size, center, radius, color, strength):
 BACKGROUNDS = {                   # підкладка від дизайнера: рваний папір кольору категорії
     "civilians": ROOT / "backgrounds" / "civilians.jpg",
     "children": ROOT / "backgrounds" / "civilians.jpg",
-    "militaries": ROOT / "backgrounds" / "militaries.jpg",
+    "militaries": ROOT / "backgrounds" / "civilians.jpg",   # синій папір для всіх
 }
 
 
@@ -209,7 +209,16 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     duo = duo.resize(size, Image.LANCZOS).filter(ImageFilter.UnsharpMask(radius=2, percent=60, threshold=2))
 
     cut = cut_person(photo)
-    if cut is not None:
+    on_paper = cut is not None and BACKGROUNDS.get(category)
+    if on_paper:
+        # на підкладці з папером людина вирізана чітко по контуру, без розчинення країв;
+        # плавно зникає лише низ, якщо фото не дістає до низу картки
+        alpha = cut.getchannel("A").resize(size, Image.LANCZOS)
+        alpha = alpha.point(lambda v: 0 if v < 40 else min(255, int((v - 40) * 255 / 120)))
+        alpha = alpha.filter(ImageFilter.GaussianBlur(0.8))
+        if oy + size[1] < H - 2:
+            alpha = ImageChops.multiply(alpha, fade_mask(size, left=0, top=0, right=0, bottom=0.10))
+    elif cut is not None:
         alpha = cut.getchannel("A").resize(size, Image.LANCZOS)
         alpha = alpha.filter(ImageFilter.MinFilter(5)).filter(ImageFilter.GaussianBlur(8))
         alpha = ImageChops.multiply(alpha, fade_mask(size, left=0, top=0, right=0.06, bottom=0.18))
@@ -223,18 +232,14 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     # ліва колонка з текстом лишається чистою: людина м'яко зникає ліворуч
     ramp = Image.linear_gradient("L").rotate(90, expand=True).resize((W, H))   # 0 зліва → 255 справа
     ramp = ramp.point(lambda v: 0 if v < 100 else min(255, int((v - 100) * 255 / 70)))
-    if cut is not None and BACKGROUNDS.get(category):
-        # на підкладці з папером людина має бути щільною, щоб край паперу не просвічував крізь неї
-        mask = mask.point(lambda v: min(255, v * 3)).filter(ImageFilter.GaussianBlur(1.5))
-        # і зникає ліворуч лише вузькою смугою біля колонки тексту
-        ramp = Image.linear_gradient("L").rotate(90, expand=True).resize((W, H))
-        ramp = ramp.point(lambda v: 0 if v * W / 255 < 520 else min(255, int((v * W / 255 - 520) * 255 / 80)))
+    if on_paper:
+        ramp = Image.new("L", (W, H), 255)      # людина ціла, текст лягає поверх
     card.paste(layer, (0, 0), ImageChops.multiply(mask, ramp))
 
     # затемнення внизу, щоб підпис читався поверх фото
     shade_h = 300
     shade = Image.new("RGBA", (W, shade_h), BG_BOTTOM + (0,))
-    sa = Image.linear_gradient("L").resize((W, shade_h)).point(lambda v: int(v * 0.9))
+    sa = Image.linear_gradient("L").resize((W, shade_h)).point(lambda v: int(v * (0.55 if on_paper else 0.9)))
     shade.putalpha(sa)
     card.paste(shade, (0, H - shade_h), shade)
 

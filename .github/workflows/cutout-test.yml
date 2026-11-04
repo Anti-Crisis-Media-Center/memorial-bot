@@ -2,7 +2,8 @@ name: Тест вирізання фону
 on:
   workflow_dispatch:
     inputs:
-      url: {required: true}
+      url: {required: false, default: ""}
+      ids: {required: false, default: ""}
       models: {default: "u2net_human_seg birefnet-portrait"}
 permissions:
   contents: write
@@ -14,7 +15,12 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
       - run: pip install -r requirements.txt
-      - run: python tools/compare_cutout.py "${{ inputs.url }}" ${{ inputs.models }}
+      - if: inputs.ids == ''
+        run: python tools/compare_cutout.py "${{ inputs.url }}" ${{ inputs.models }}
+      - if: inputs.ids != ''
+        run: python tools/preview_card.py ${{ inputs.ids }}
+        env:
+          U2NET_HOME: /home/runner/.u2net
       - run: |
           git config user.name bot; git config user.email bot@users.noreply.github.com
           git checkout --orphan cutout-test && git rm -rqf . && git add -f cutout_test.jpg
