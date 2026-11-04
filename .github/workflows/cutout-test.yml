@@ -18,10 +18,10 @@ jobs:
       - if: inputs.ids == ''
         run: python tools/compare_cutout.py "${{ inputs.url }}" ${{ inputs.models }}
       - if: inputs.ids != ''
-        run: python tools/preview_card.py ${{ inputs.ids }}
+        run: python tools/preview_card.py ${{ inputs.ids }} || true
         env:
           U2NET_HOME: /home/runner/.u2net
       - run: |
           git config user.name bot; git config user.email bot@users.noreply.github.com
-          git checkout --orphan cutout-test && git rm -rqf . && git add -f cutout_test.jpg
+          git checkout --orphan cutout-test && git rm -rqf . && git add -f cutout_test.jpg; git add -f timings.txt || true
           git commit -qm "cutout test" && git push -qf origin cutout-test
