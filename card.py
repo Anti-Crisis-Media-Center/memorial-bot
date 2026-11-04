@@ -200,7 +200,12 @@ def background(category: str):
         return gradient((W, H), BG_TOP, BG_BOTTOM)
     bg = Image.open(path).convert("RGB")
     bg = bg.resize((W, round(bg.height * W / bg.width)), Image.LANCZOS)
-    return bg.crop((0, bg.height - H, W, bg.height))
+    bg = bg.crop((0, bg.height - H, W, bg.height))
+    # темна частина підкладки майже чорна — піднімаємо її до графіту АКМЦ (#3c3c3c),
+    # зберігаючи ледь помітну текстуру; папір і кольорова смуга не змінюються
+    dark = ImageOps.grayscale(bg).point(lambda v: 255 if v < 40 else max(0, 255 - (v - 40) * 12))
+    lifted = ImageChops.add(gradient((W, H), BG_TOP, BG_BOTTOM), bg.point(lambda v: int(v * 0.9)))
+    return Image.composite(lifted, bg, dark.filter(ImageFilter.GaussianBlur(1)))
 
 
 def make_card(photo: Image.Image, *, category, name, subtitle, city, years, credit=True) -> bytes:
