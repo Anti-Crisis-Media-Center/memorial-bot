@@ -144,8 +144,15 @@ def cut_person(photo: Image.Image):
     except ImportError:
         return None
     if _SESSION is None:
-        _SESSION = new_session("birefnet-portrait")   # точніше за u2net: не лишає тло між рукою й тілом
-    return remove(photo.convert("RGB"), session=_SESSION)
+        # дві моделі: birefnet точно веде контур, u2net_human_seg бачить лише людину.
+        # Беремо перетин масок — так зникають і камені під рукою, і рюкзак чи інші речі поруч
+        _SESSION = [new_session("birefnet-portrait"), new_session("u2net_human_seg")]
+    sessions = _SESSION if isinstance(_SESSION, list) else [_SESSION]
+    rgb = photo.convert("RGB")
+    out = remove(rgb, session=sessions[0])
+    for sess in sessions[1:]:
+        out.putalpha(ImageChops.darker(out.getchannel("A"), remove(rgb, session=sess).getchannel("A")))
+    return out
 
 
 def halo(size, center, radius, color, strength):
