@@ -36,6 +36,11 @@ ACCENT = {                        # колір рамки: білий для в�
     "children": (235, 235, 235),
     "militaries": (235, 235, 235),
 }
+PAPER_COLOR = {                   # рвана смуга за людиною: синя — цивільні й діти, оливкова — військові
+    "civilians": (35, 51, 87),    # #233357 — синій АКМЦ
+    "children": (35, 51, 87),
+    "militaries": (122, 106, 58), # оливковий
+}
 SUBTITLE = {                      # професія / підрозділ — без акценту, світлий текст
     "civilians": (226, 230, 238),
     "children": (226, 230, 238),
@@ -158,6 +163,40 @@ def halo(size, center, radius, color, strength):
     return layer
 
 
+def torn_edge(rnd, x0, y0, x1, y1, jag, step=(6, 14)):
+    """Нерівна лінія від (x0, y0) до (x1, y1) — як рваний край паперу."""
+    pts, x = [], x0
+    while x < x1:
+        t = (x - x0) / (x1 - x0)
+        pts.append((x, y0 + (y1 - y0) * t + rnd.uniform(-jag, jag)))
+        x += rnd.randint(*step)
+    pts.append((x1, y1))
+    return pts
+
+
+def torn_strip(category: str, seed: int):
+    """Смуга кольору категорії з рваним світлим паперовим краєм, що піднімається праворуч."""
+    import random
+    rnd = random.Random(seed)
+    # Клин праворуч унизу: починається біля низу картки правіше від підпису
+    # «Хвилина мовчання» і піднімається до правого краю — текст лишається на темному тлі
+    x0, y0 = 540 + rnd.randint(-15, 15), H + 10
+    x1, y1 = W + 10, 430 + rnd.randint(-30, 30)
+    paper_top = torn_edge(rnd, x0 - 30, y0, x1, y1 - 30, 9)
+    color_top = torn_edge(rnd, x0, y0, x1, y1, 5)
+    paper_top = paper_top + [(W + 10, H + 10)]
+    color_top = color_top + [(W + 10, H + 10)]
+    paper = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(paper).polygon(paper_top, fill=255)
+    color = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(color).polygon(color_top, fill=255)
+    grain = Image.effect_noise((W, H), 30).filter(ImageFilter.GaussianBlur(0.8))
+    paper_tex = ImageOps.colorize(grain, black=(205, 200, 190), white=(245, 242, 236))
+    layer = paper_tex.convert("RGB")
+    layer.paste(PAPER_COLOR.get(category, PAPER_COLOR["civilians"]), (0, 0), color)
+    return layer, paper
+
+
 def make_card(photo: Image.Image, *, category, name, subtitle, city, years, credit=True) -> bytes:
     accent = ACCENT.get(category, ACCENT["civilians"])
     card = gradient((W, H), BG_TOP, BG_BOTTOM)
@@ -214,6 +253,14 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     sa = Image.linear_gradient("L").resize((W, shade_h)).point(lambda v: int(v * 0.9))
     shade.putalpha(sa)
     card.paste(shade, (0, H - shade_h), shade)
+
+    # рвана смуга лежить «за» людиною: видно лише там, де людини немає
+    strip, smask = torn_strip(category, seed=sum(map(ord, name)))
+    person = ImageChops.multiply(mask, ramp).point(lambda v: 255 if v > 60 else v * 4)
+    free = ImageOps.invert(person.filter(ImageFilter.GaussianBlur(3)))
+    shadow = smask.filter(ImageFilter.GaussianBlur(10)).point(lambda v: int(v * 0.55))
+    card.paste((0, 0, 0), (0, -6), ImageChops.multiply(shadow, free))
+    card.paste(strip, (0, 0), ImageChops.multiply(smask, free))
 
     d = ImageDraw.Draw(card)
     margin = 72
