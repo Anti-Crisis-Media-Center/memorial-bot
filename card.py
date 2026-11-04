@@ -216,8 +216,15 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         alpha = cut.getchannel("A").resize(size, Image.LANCZOS)
         alpha = alpha.point(lambda v: 0 if v < 40 else min(255, int((v - 40) * 255 / 120)))
         alpha = alpha.filter(ImageFilter.GaussianBlur(0.8))
-        if oy + size[1] < H - 2:
-            alpha = ImageChops.multiply(alpha, fade_mask(size, left=0, top=0, right=0, bottom=0.10))
+        # людина не заходить на колонку тексту: зсуваємо праворуч (обличчя лишається в кадрі)
+        bbox = alpha.point(lambda v: 255 if v > 40 else 0).getbbox()
+        if bbox and ox + bbox[0] < 545:
+            face_x = ox + (fx + fw / 2) * scale if face is not None else ox + size[0] / 2
+            ox += int(max(0, min(545 - (ox + bbox[0]), W - 190 - face_x)))
+        # там, де тіло обрізане рамкою фото (низ, лівий край), — короткий м'який перехід,
+        # щоб не було прямого зрізу
+        alpha = ImageChops.multiply(alpha, fade_mask(size, left=0.06, top=0, right=0,
+                                                     bottom=0.16 if oy + size[1] < H - 2 else 0))
     elif cut is not None:
         alpha = cut.getchannel("A").resize(size, Image.LANCZOS)
         alpha = alpha.filter(ImageFilter.MinFilter(5)).filter(ImageFilter.GaussianBlur(8))
