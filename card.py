@@ -208,6 +208,17 @@ def cut_person(photo: Image.Image):
     foreign = cv2.morphologyEx(foreign, cv2.MORPH_OPEN, np.ones((k, k), "uint8"))
     foreign = cv2.dilate(foreign, np.ones((7, 7), "uint8"))
     a = a * (1 - foreign)
+    # шматки, що тримаються за фігуру лише тонким «перешийком» (чужа рука, предмет збоку):
+    # розділяємо фігуру великим «розмиканням» і лишаємо тільки частину, де голова й торс
+    fig = (a > 128).astype("uint8")
+    kk = max(9, int(min(a.shape) * 0.09)) | 1
+    core = cv2.morphologyEx(fig, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kk, kk)))
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(core, 8)
+    if n > 2:
+        main = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+        keep = cv2.dilate((labels == main).astype("uint8"),
+                          cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kk * 2 + 1, kk * 2 + 1)))
+        a = a * keep
     # наскільки моделі згодні щодо силуету
     am, bm = a > 128, b > 128
     union = (am | bm).sum()
@@ -341,7 +352,9 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         right_in = ox + size[0] < W - 2
         # спершу чіткий контур, а розчиняється лише вузька смужка (~35 px) біля краю фото
         edge = 35 / size[0]
-        alpha = ImageChops.multiply(alpha, fade_mask(size, left=edge, top=0, right=edge if right_in else 0, bottom=0))
+        top_cut = alpha.crop((0, 0, size[0], 3)).getextrema()[1] > 100      # голова обрізана верхом фото
+        alpha = ImageChops.multiply(alpha, fade_mask(size, left=edge, top=(35 / size[1]) if top_cut else 0,
+                                                     right=edge if right_in else 0, bottom=0))
     elif cut is not None:
         alpha = cut.getchannel("A").resize(size, Image.LANCZOS)
         alpha = alpha.filter(ImageFilter.MinFilter(5)).filter(ImageFilter.GaussianBlur(8))
