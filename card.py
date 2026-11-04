@@ -163,38 +163,59 @@ def halo(size, center, radius, color, strength):
     return layer
 
 
-def torn_edge(rnd, x0, y0, x1, y1, jag, step=(6, 14)):
-    """Нерівна лінія від (x0, y0) до (x1, y1) — як рваний край паперу."""
-    pts, x = [], x0
-    while x < x1:
-        t = (x - x0) / (x1 - x0)
-        pts.append((x, y0 + (y1 - y0) * t + rnd.uniform(-jag, jag)))
-        x += rnd.randint(*step)
-    pts.append((x1, y1))
-    return pts
+def _noise1d(rnd, n, period, sharp=False):
+    """Плавний 1-D шум довжини n (значення -1..1) з характерним кроком period."""
+    import math
+    knots = [rnd.uniform(-1, 1) for _ in range(n // period + 3)]
+    out = []
+    for x in range(n):
+        i, t = divmod(x / period, 1)
+        i = int(i)
+        if not sharp:                      # плавні пагорби; sharp — гострі «зубці»
+            t = (1 - math.cos(t * math.pi)) / 2
+        out.append(knots[i] * (1 - t) + knots[i + 1] * t)
+    return out
 
 
 def torn_strip(category: str, seed: int):
-    """Смуга кольору категорії з рваним світлим паперовим краєм, що піднімається праворуч."""
+    """Смуга кольору категорії з природно рваним білим паперовим краєм.
+
+    Край будується з кількох шарів шуму: великі «пагорби», дрібніші вигини,
+    нерівна ширина білої смужки паперу і волокна на самому краю.
+    """
     import random
     rnd = random.Random(seed)
-    # Клин праворуч унизу: починається біля низу картки правіше від підпису
-    # «Хвилина мовчання» і піднімається до правого краю — текст лишається на темному тлі
-    x0, y0 = 540 + rnd.randint(-15, 15), H + 10
-    x1, y1 = W + 10, 430 + rnd.randint(-30, 30)
-    paper_top = torn_edge(rnd, x0 - 30, y0, x1, y1 - 30, 9)
-    color_top = torn_edge(rnd, x0, y0, x1, y1, 5)
-    paper_top = paper_top + [(W + 10, H + 10)]
-    color_top = color_top + [(W + 10, H + 10)]
-    paper = Image.new("L", (W, H), 0)
-    ImageDraw.Draw(paper).polygon(paper_top, fill=255)
+    n = W + 40
+    hills, mid = _noise1d(rnd, n, 230), _noise1d(rnd, n, 55, sharp=True)
+    fine, fine2 = _noise1d(rnd, n, 12, sharp=True), _noise1d(rnd, n, 5, sharp=True)
+    width = _noise1d(rnd, n, 120)
+    x0 = 520 + rnd.randint(-20, 20)            # клин починається правіше підпису
+    y_right = 420 + rnd.randint(-30, 30)
     color = Image.new("L", (W, H), 0)
-    ImageDraw.Draw(color).polygon(color_top, fill=255)
-    grain = Image.effect_noise((W, H), 30).filter(ImageFilter.GaussianBlur(0.8))
-    paper_tex = ImageOps.colorize(grain, black=(205, 200, 190), white=(245, 242, 236))
-    layer = paper_tex.convert("RGB")
-    layer.paste(PAPER_COLOR.get(category, PAPER_COLOR["civilians"]), (0, 0), color)
-    return layer, paper
+    paper = Image.new("L", (W, H), 0)
+    cpts, ppts = [], []
+    for i in range(0, n, 2):
+        x = i - 20
+        t = min(1.0, max(0.0, (x - x0) / (W - x0)))
+        base = H + 70 + (y_right - H - 70) * (t ** 0.8)
+        y = base + 105 * hills[i] * t + 26 * mid[i] + 8 * fine[i] + 3 * fine2[i]
+        cpts.append((x, y))
+        ppts.append((x, y - (14 + 56 * (width[i] + 1) / 2) - 14 * abs(fine2[i]) - 10 * abs(mid[i]) - rnd.uniform(0, 5)))
+    corner = [(W + 20, H + 20), (x0 - 200, H + 20)]
+    ImageDraw.Draw(color).polygon(cpts + corner, fill=255)
+    ImageDraw.Draw(paper).polygon(ppts + corner, fill=255)
+    # волокна: розмитий край + шум → нерівний «пухнастий» обрив паперу
+    fib = Image.effect_noise((W, H), 90).point(lambda v: (v - 128) // 2 + 128)   # 64..192
+    paper = ImageChops.add(paper.filter(ImageFilter.GaussianBlur(3.2)), fib, scale=1.0, offset=-128)
+    paper = paper.point(lambda v: 255 if v > 128 else 0).filter(ImageFilter.GaussianBlur(0.7))
+    paper = ImageChops.lighter(paper, color)
+    # текстура білого паперу з легкою тінню біля кольорової смуги
+    grain = Image.effect_noise((W, H), 22).filter(ImageFilter.GaussianBlur(0.6))
+    tex = ImageOps.colorize(grain, black=(214, 210, 202), white=(248, 246, 241)).convert("RGB")
+    shade = color.filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(6))
+    tex = Image.composite(Image.blend(tex, Image.new("RGB", (W, H), (150, 146, 140)), 0.35), tex, shade)
+    tex.paste(PAPER_COLOR.get(category, PAPER_COLOR["civilians"]), (0, 0), color)
+    return tex, paper
 
 
 def make_card(photo: Image.Image, *, category, name, subtitle, city, years, credit=True) -> bytes:
