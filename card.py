@@ -237,7 +237,7 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         # плавно зникає лише низ, якщо фото не дістає до низу картки
         alpha = cut.getchannel("A").resize(size, Image.LANCZOS)
         alpha = alpha.point(lambda v: 0 if v < 40 else min(255, int((v - 40) * 255 / 120)))
-        alpha = alpha.filter(ImageFilter.GaussianBlur(0.8))
+        alpha = alpha.filter(ImageFilter.GaussianBlur(2.5))   # м'який стик силуету з тлом
         # людина не заходить на колонку тексту: зсуваємо праворуч (обличчя лишається в кадрі)
         bbox = alpha.point(lambda v: 255 if v > 40 else 0).getbbox()
         if bbox and ox + bbox[0] < 545:
@@ -245,6 +245,10 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
             ox += int(max(0, min(545 - (ox + bbox[0]), W - 190 - face_x)))
         # лишаємо тільки людину: окремі шматки тла, які модель прихопила, прибираємо
         alpha = keep_main_figure(alpha)
+        # де тіло обрізане краєм самого фото (плечі ліворуч, праворуч) — плавно розчиняємо,
+        # щоб не було прямого вертикального зрізу
+        right_in = ox + size[0] < W - 2
+        alpha = ImageChops.multiply(alpha, fade_mask(size, left=0.14, top=0, right=0.10 if right_in else 0, bottom=0))
     elif cut is not None:
         alpha = cut.getchannel("A").resize(size, Image.LANCZOS)
         alpha = alpha.filter(ImageFilter.MinFilter(5)).filter(ImageFilter.GaussianBlur(8))
@@ -269,6 +273,15 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     sa = Image.linear_gradient("L").resize((W, shade_h)).point(lambda v: int(v * (0.55 if on_paper else 0.9)))
     shade.putalpha(sa)
     card.paste(shade, (0, H - shade_h), shade)
+
+    if on_paper:
+        # темна підкладка під підписом «Хвилина мовчання» зліва внизу — для контрасту
+        fh_, fw_ = 300, 760
+        vy = Image.linear_gradient("L").resize((fw_, fh_))                       # 0 вгорі → 255 внизу
+        hx = Image.linear_gradient("L").rotate(90, expand=True).resize((fw_, fh_))
+        hx = ImageOps.invert(hx)                                                 # 255 зліва → 0 справа
+        fm = ImageChops.multiply(vy.point(lambda v: min(255, int(v * 1.6))), hx.point(lambda v: min(255, int(v * 1.5))))
+        card.paste((10, 10, 12), (0, H - fh_), fm.point(lambda v: int(v * 0.85)))
 
     d = ImageDraw.Draw(card)
     margin = 72
@@ -319,9 +332,18 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         mark = mark.resize((int(mark.width * mh / mark.height), mh), Image.LANCZOS)
         card.paste(mark, (margin - (10 if category == "militaries" else 0), base), mark)
         tx = margin + mark.width + 26
-    d.text((tx, base + (mh - 104) // 2 + 16), "Хвилина мовчання", font=font("Bold", 34), fill=YELLOW)
+    lines = [((tx, base + (mh - 104) // 2 + 16), "Хвилина мовчання", font("Bold", 34), YELLOW)]
     if credit:
-        d.text((tx, base + (mh - 104) // 2 + 60), "Платформа пам'яті «Меморіал»", font=font("Medium", 24), fill=MUTED)
+        lines.append(((tx, base + (mh - 104) // 2 + 60), "Платформа пам'яті «Меморіал»",
+                      font("SemiBold", 24), (232, 234, 240)))
+    # м'яка тінь під підписом — читається і на папері, і на одязі людини
+    sh = Image.new("L", (W, H), 0)
+    sd = ImageDraw.Draw(sh)
+    for xy, text, f, _ in lines:
+        sd.text((xy[0] + 2, xy[1] + 3), text, font=f, fill=230)
+    card.paste((0, 0, 0), (0, 0), sh.filter(ImageFilter.GaussianBlur(5)))
+    for xy, text, f, color in lines:
+        d.text(xy, text, font=f, fill=color)
     if LOGO.exists():
         # лінії логотипа вже потовщені у файлі logo.png, тут лише якісне зменшення
         logo = Image.open(LOGO).convert("RGBA")
