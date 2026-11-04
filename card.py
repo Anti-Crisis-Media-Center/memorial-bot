@@ -158,9 +158,26 @@ def halo(size, center, radius, color, strength):
     return layer
 
 
+BACKGROUNDS = {                   # підкладка від дизайнера: рваний папір кольору категорії
+    "civilians": ROOT / "backgrounds" / "civilians.jpg",
+    "children": ROOT / "backgrounds" / "civilians.jpg",
+    "militaries": ROOT / "backgrounds" / "militaries.jpg",
+}
+
+
+def background(category: str):
+    """Підкладка картки: файл дизайнера, обрізаний до квадрата (низ із папером зберігається)."""
+    path = BACKGROUNDS.get(category)
+    if not path or not Path(path).exists():
+        return gradient((W, H), BG_TOP, BG_BOTTOM)
+    bg = Image.open(path).convert("RGB")
+    bg = bg.resize((W, round(bg.height * W / bg.width)), Image.LANCZOS)
+    return bg.crop((0, bg.height - H, W, bg.height))
+
+
 def make_card(photo: Image.Image, *, category, name, subtitle, city, years, credit=True) -> bytes:
     accent = ACCENT.get(category, ACCENT["civilians"])
-    card = gradient((W, H), BG_TOP, BG_BOTTOM)
+    card = background(category)
 
     # --- фото: чорно-біле, праворуч унизу, з м'яким переходом у тло
     # Фото: людина праворуч, тло фото прибране, краї плавно розчиняються.
@@ -206,6 +223,12 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     # ліва колонка з текстом лишається чистою: людина м'яко зникає ліворуч
     ramp = Image.linear_gradient("L").rotate(90, expand=True).resize((W, H))   # 0 зліва → 255 справа
     ramp = ramp.point(lambda v: 0 if v < 100 else min(255, int((v - 100) * 255 / 70)))
+    if cut is not None and BACKGROUNDS.get(category):
+        # на підкладці з папером людина має бути щільною, щоб край паперу не просвічував крізь неї
+        mask = mask.point(lambda v: min(255, v * 3)).filter(ImageFilter.GaussianBlur(1.5))
+        # і зникає ліворуч лише вузькою смугою біля колонки тексту
+        ramp = Image.linear_gradient("L").rotate(90, expand=True).resize((W, H))
+        ramp = ramp.point(lambda v: 0 if v * W / 255 < 520 else min(255, int((v * W / 255 - 520) * 255 / 80)))
     card.paste(layer, (0, 0), ImageChops.multiply(mask, ramp))
 
     # затемнення внизу, щоб підпис читався поверх фото
