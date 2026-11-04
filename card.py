@@ -36,11 +36,6 @@ ACCENT = {                        # колір рамки: білий для в�
     "children": (235, 235, 235),
     "militaries": (235, 235, 235),
 }
-PAPER_COLOR = {                   # рвана смуга за людиною: синя — цивільні й діти, оливкова — військові
-    "civilians": (35, 51, 87),    # #233357 — синій АКМЦ
-    "children": (35, 51, 87),
-    "militaries": (122, 106, 58), # оливковий
-}
 SUBTITLE = {                      # професія / підрозділ — без акценту, світлий текст
     "civilians": (226, 230, 238),
     "children": (226, 230, 238),
@@ -163,65 +158,6 @@ def halo(size, center, radius, color, strength):
     return layer
 
 
-def _noise1d(rnd, n, period, sharp=False):
-    """Плавний 1-D шум довжини n (значення -1..1) з характерним кроком period."""
-    import math
-    knots = [rnd.uniform(-1, 1) for _ in range(n // period + 3)]
-    out = []
-    for x in range(n):
-        i, t = divmod(x / period, 1)
-        i = int(i)
-        if not sharp:                      # плавні пагорби; sharp — гострі «зубці»
-            t = (1 - math.cos(t * math.pi)) / 2
-        out.append(knots[i] * (1 - t) + knots[i + 1] * t)
-    return out
-
-
-def torn_strip(category: str, seed: int):
-    """Смуга кольору категорії з природно рваним білим паперовим краєм.
-
-    Край будується з кількох шарів шуму: великі «пагорби», дрібніші вигини,
-    нерівна ширина білої смужки паперу і волокна на самому краю.
-    """
-    import random
-    rnd = random.Random(seed)
-    n = W + 40
-    hills, mid = _noise1d(rnd, n, 230), _noise1d(rnd, n, 55, sharp=True)
-    fine, fine2 = _noise1d(rnd, n, 12, sharp=True), _noise1d(rnd, n, 5, sharp=True)
-    width = _noise1d(rnd, n, 120)
-    # Смуга йде через усю ширину: зліва низько, під підписом «Хвилина мовчання»,
-    # далі піднімається праворуч за людиною
-    x0 = 470 + rnd.randint(-30, 30)            # звідки починається підйом
-    y_left = H - 40 + rnd.randint(-6, 6)       # під підписом — тонка смуга біля низу
-    y_right = 420 + rnd.randint(-30, 30)
-    color = Image.new("L", (W, H), 0)
-    paper = Image.new("L", (W, H), 0)
-    cpts, ppts = [], []
-    for i in range(0, n, 2):
-        x = i - 20
-        t = min(1.0, max(0.0, (x - x0) / (W - x0)))
-        base = y_left + (y_right - y_left) * (t ** 0.8)
-        amp = 0.25 + 0.75 * t                  # біля підпису край спокійніший
-        y = base + 105 * hills[i] * t + amp * 26 * mid[i] + 8 * fine[i] + 3 * fine2[i]
-        cpts.append((x, y))
-        ppts.append((x, y - (0.5 + 0.5 * t) * (14 + 56 * (width[i] + 1) / 2 + 14 * abs(fine2[i]) + 10 * abs(mid[i])) - rnd.uniform(0, 5)))
-    corner = [(W + 20, H + 20), (-20, H + 20)]
-    ImageDraw.Draw(color).polygon(cpts + corner, fill=255)
-    ImageDraw.Draw(paper).polygon(ppts + corner, fill=255)
-    # волокна: розмитий край + шум → нерівний «пухнастий» обрив паперу
-    fib = Image.effect_noise((W, H), 90).point(lambda v: (v - 128) // 2 + 128)   # 64..192
-    paper = ImageChops.add(paper.filter(ImageFilter.GaussianBlur(3.2)), fib, scale=1.0, offset=-128)
-    paper = paper.point(lambda v: 255 if v > 128 else 0).filter(ImageFilter.GaussianBlur(0.7))
-    paper = ImageChops.lighter(paper, color)
-    # текстура білого паперу з легкою тінню біля кольорової смуги
-    grain = Image.effect_noise((W, H), 22).filter(ImageFilter.GaussianBlur(0.6))
-    tex = ImageOps.colorize(grain, black=(214, 210, 202), white=(248, 246, 241)).convert("RGB")
-    shade = color.filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(6))
-    tex = Image.composite(Image.blend(tex, Image.new("RGB", (W, H), (150, 146, 140)), 0.35), tex, shade)
-    tex.paste(PAPER_COLOR.get(category, PAPER_COLOR["civilians"]), (0, 0), color)
-    return tex, paper
-
-
 def make_card(photo: Image.Image, *, category, name, subtitle, city, years, credit=True) -> bytes:
     accent = ACCENT.get(category, ACCENT["civilians"])
     card = gradient((W, H), BG_TOP, BG_BOTTOM)
@@ -279,14 +215,6 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     shade.putalpha(sa)
     card.paste(shade, (0, H - shade_h), shade)
 
-    # рвана смуга лежить «за» людиною: видно лише там, де людини немає
-    strip, smask = torn_strip(category, seed=sum(map(ord, name)))
-    person = ImageChops.multiply(mask, ramp).point(lambda v: 255 if v > 60 else v * 4)
-    free = ImageOps.invert(person.filter(ImageFilter.GaussianBlur(3)))
-    shadow = smask.filter(ImageFilter.GaussianBlur(10)).point(lambda v: int(v * 0.55))
-    card.paste((0, 0, 0), (0, -6), ImageChops.multiply(shadow, free))
-    card.paste(strip, (0, 0), ImageChops.multiply(smask, free))
-
     d = ImageDraw.Draw(card)
     margin = 72
     col_w = 470                    # ліва колонка тексту — не заходить на обличчя
@@ -329,7 +257,7 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     # --- низ: знак «Меморіалу» + підпис
     mark_path = MARKS.get(category)
     mh = 150 if category == "militaries" else 104   # жетон з ниткою — трохи більший
-    base = H - 130 - 104 - (mh - 104) // 2      # підпис трохи вище — під ним іде рвана смуга
+    base = H - 80 - 104 - (mh - 104) // 2
     tx = margin
     if mark_path and mark_path.exists():
         mark = Image.open(mark_path).convert("RGBA")
