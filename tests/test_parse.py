@@ -101,3 +101,12 @@ def test_card_renders():
                                   name="Олена Коневська", subtitle="продавчиня", city="Слов'янськ",
                                   years="1984 — 2026")
             assert data[:2] == b"\xff\xd8" and len(data) > 10000
+
+
+def test_story_cut_at_asterisks():
+    from memorial import parse_person
+    html = ('<html><h1 class="name">Тест Тестович</h1><div id="personStory"><div class="article-text">'
+            '<p>Перший абзац.</p><p>Другий абзац.</p><p>*** Платформа пам\'яті «Меморіал» вшановує…</p>'
+            '<p>Ще приписка.</p></div></div></html>')
+    p = parse_person(html, "https://memorial.ua/obituaries/militaries/test-1", "militaries")
+    assert p.story == ["Перший абзац.", "Другий абзац."]

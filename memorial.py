@@ -155,8 +155,12 @@ def parse_person(html: str, url: str, category: str) -> Person:
         for p in container.find_all(["p", "h3", "h4", "li"]):
             text = normalize(p.get_text(" "))
             text = re.sub(r"\s+([,.;:!?])", r"\1", text)
-            if text:
-                story.append(text)
+            # «***» відділяє історію від службової приписки Меморіалу (партнери тощо) — далі не беремо
+            cut = re.split(r"\*\s*\*\s*\*", text, maxsplit=1)
+            if cut[0].strip():
+                story.append(cut[0].strip())
+            if len(cut) > 1:
+                break
 
     return Person(
         id=person_id(url),
