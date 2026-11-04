@@ -179,8 +179,8 @@ def keep_main_figure(alpha: Image.Image) -> Image.Image:
 
 
 BACKGROUNDS = {                   # підкладка від дизайнера: рваний папір кольору категорії
-    "civilians": ROOT / "backgrounds" / "civilians_warm.jpg",   # теплий графітово-синій
-    "children": ROOT / "backgrounds" / "civilians_warm.jpg",
+    "civilians": ROOT / "backgrounds" / "civilians_birds.jpg",  # графіт із птахами + теплий графітово-синій папір
+    "children": ROOT / "backgrounds" / "civilians_birds.jpg",
     "militaries": ROOT / "backgrounds" / "militaries.jpg",
 }
 
