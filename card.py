@@ -112,7 +112,7 @@ _SESSION = None
 # Скільки місця займає людина: висота обличчя = 20% висоти картки,
 # центр обличчя — праворуч (70% ширини), трохи нижче середини (47% висоти).
 FACE_H = 0.20
-FACE_CX, FACE_CY = 0.70, 0.47
+FACE_CX, FACE_CY = 0.66, 0.47
 
 
 def find_face(photo: Image.Image):
@@ -242,13 +242,16 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         bbox = alpha.point(lambda v: 255 if v > 40 else 0).getbbox()
         if bbox and ox + bbox[0] < 545:
             face_x = ox + (fx + fw / 2) * scale if face is not None else ox + size[0] / 2
-            ox += int(max(0, min(545 - (ox + bbox[0]), W - 190 - face_x)))
-        # лишаємо тільки людину: окремі шматки тла, які модель прихопила, прибираємо
-        alpha = keep_main_figure(alpha)
-        # де тіло обрізане краєм самого фото (плечі ліворуч, праворуч) — плавно розчиняємо,
-        # щоб не було прямого вертикального зрізу
+            ox += int(max(0, min(545 - (ox + bbox[0]), W - 260 - face_x)))
+        # голова (з вухами) не виходить за білу рамку праворуч
+        if face is not None:
+            head_right = ox + (fx + fw * 1.25) * scale
+            if head_right > W - 60:
+                ox -= int(head_right - (W - 60))
         right_in = ox + size[0] < W - 2
-        alpha = ImageChops.multiply(alpha, fade_mask(size, left=0.14, top=0, right=0.10 if right_in else 0, bottom=0))
+        # спершу чіткий контур, а розчиняється лише вузька смужка (~35 px) біля краю фото
+        edge = 35 / size[0]
+        alpha = ImageChops.multiply(alpha, fade_mask(size, left=edge, top=0, right=edge if right_in else 0, bottom=0))
     elif cut is not None:
         alpha = cut.getchannel("A").resize(size, Image.LANCZOS)
         alpha = alpha.filter(ImageFilter.MinFilter(5)).filter(ImageFilter.GaussianBlur(8))
