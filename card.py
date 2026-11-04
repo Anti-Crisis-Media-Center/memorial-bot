@@ -338,16 +338,16 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
             ox += int(max(0, min(545 - (ox + bbox[0]), W - 260 - face_x)))
         # голова (з вухами) не виходить за білу рамку праворуч
         if face is not None:
-            head_right = ox + (fx + fw * 1.25) * scale
-            if head_right > W - 60:
-                ox -= int(head_right - (W - 60))
+            head_right = ox + (fx + fw * 1.12) * scale
+            if head_right > W - 34:
+                ox -= int(head_right - (W - 34))
         # тіло обрізане правим краєм фото → ставимо цей зріз упритик до правого краю картки
         # (якщо при цьому голова з вухами лишається в рамці)
         a_np = alpha.crop((size[0] - 10, 0, size[0], size[1])).getextrema()
         if a_np[1] > 60:
             ox_edge = W - size[0]
             if face is not None:                # вухо не далі ніж на 40 px від краю картки
-                ox_edge = min(ox_edge, int(W - 40 - (fx + fw * 1.2) * scale))
+                ox_edge = min(ox_edge, int(W - 34 - (fx + fw * 1.12) * scale))
             ox = max(ox, ox_edge)
         right_in = ox + size[0] < W - 2
         # спершу чіткий контур, а розчиняється лише вузька смужка (~35 px) біля краю фото
