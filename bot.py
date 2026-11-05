@@ -224,8 +224,13 @@ def choose(index, published, rejected, day: date, rng: random.Random):
 
 # ---------- Telegram ----------
 
-def tg(method, **params):
-    token = env("TELEGRAM_BOT_TOKEN")
+def review_token():
+    """Бот для чернеток і кнопок (окремий «меморіальний» бот, якщо є)."""
+    return env("MEMORIAL_BOT_TOKEN") or env("TELEGRAM_BOT_TOKEN")
+
+
+def tg(method, _token=None, **params):
+    token = _token or env("TELEGRAM_BOT_TOKEN")
     r = requests.post(f"https://api.telegram.org/bot{token}/{method}", json=params, timeout=60)
     data = r.json()
     if not data.get("ok"):
@@ -237,11 +242,14 @@ def make_card(person, region, nocut=False):
     return card.card_for_person(person, city_line_city(person, region), nocut=nocut)
 
 
-def tg_send(chat_id, text, card_bytes, silent=True):
+def tg_send(chat_id, text, card_bytes, silent=True, token=None, keyboard=None):
     """Картка + текст. Підпис до фото в Telegram — до 1024 символів;
-    довший текст іде окремим повідомленням одразу під карткою."""
-    token = env("TELEGRAM_BOT_TOKEN")
+    довший текст іде окремим повідомленням одразу під карткою.
+    keyboard — кнопки під останнім повідомленням (для чернеток)."""
+    token = token or env("TELEGRAM_BOT_TOKEN")
     data = {"chat_id": chat_id, "disable_notification": str(silent).lower()}
+    if keyboard and len(text) <= 1024:
+        data["reply_markup"] = json.dumps(keyboard)
     long_text = len(text) > 1024
     if not long_text:
         data.update(caption=text, parse_mode="HTML")
@@ -250,28 +258,27 @@ def tg_send(chat_id, text, card_bytes, silent=True):
     if not r.get("ok"):
         raise RuntimeError(f"Telegram sendPhoto: {r}")
     if long_text:
-        tg("sendMessage", chat_id=chat_id, text=text, parse_mode="HTML",
-           disable_notification=silent, link_preview_options={"is_disabled": True})
+        extra = {"reply_markup": keyboard} if keyboard else {}
+        tg("sendMessage", _token=token, chat_id=chat_id, text=text, parse_mode="HTML",
+           disable_notification=silent, link_preview_options={"is_disabled": True}, **extra)
     return r["result"]
 
 
-def stop_requested(since_ts: int) -> bool:
-    """Чи написала редакторка боту «стоп» після надсилання чернетки."""
-    review = str(env("REVIEW_CHAT_ID"))
-    try:
-        updates = tg("getUpdates", timeout=0, allowed_updates=["message"])
-    except Exception as e:
-        log("Не вдалося перевірити «стоп»:", e)
-        return False
-    stop = False
-    for u in updates:
-        m = u.get("message") or {}
-        if str(m.get("chat", {}).get("id")) == review and m.get("date", 0) >= since_ts:
-            if (m.get("text") or "").strip().lower() in ("стоп", "stop", "/stop"):
-                stop = True
-    if updates:
-        tg("getUpdates", offset=updates[-1]["update_id"] + 1, timeout=0)
-    return stop
+DRAFT_KEYBOARD = {"inline_keyboard": [
+    [{"text": "🔄 Інша людина", "callback_data": "replace"},
+     {"text": "🖼 Без вирізання", "callback_data": "nocut"}],
+    [{"text": "⛔ Не публікувати", "callback_data": "skip"},
+     {"text": "✅ Опублікувати зараз", "callback_data": "now"}],
+]}
+
+
+def review_send(text, card_bytes=None, keyboard=None):
+    """Повідомлення редакторці від «меморіального» бота."""
+    if card_bytes is not None:
+        return tg_send(env("REVIEW_CHAT_ID"), text, card_bytes, silent=False,
+                       token=review_token(), keyboard=keyboard)
+    extra = {"reply_markup": keyboard} if keyboard else {}
+    return tg("sendMessage", _token=review_token(), chat_id=env("REVIEW_CHAT_ID"), text=text, **extra)
 
 
 # ---------- Facebook ----------
@@ -309,11 +316,12 @@ def prepare(day: date, dry_run=False):
     if not person:
         raise RuntimeError("Не знайдено жодної людини для поста")
     text = build_post(person, region)
-    note = ("👆 Чернетка «Хвилини мовчання». "
-            + ("Це тест, у канал не піде." if dry_run else
-               f"Вийде о 9:00 {day.strftime('%d.%m')}.\n\n" + EDIT_HELP))
-    tg_send(env("REVIEW_CHAT_ID"), text, make_card(person, region), silent=False)
-    tg("sendMessage", chat_id=env("REVIEW_CHAT_ID"), text=note)
+    review_send(text, make_card(person, region))
+    if dry_run:
+        review_send("👆 Чернетка «Хвилини мовчання». Це тест, у канал не піде.")
+    else:
+        review_send(f"👆 Чернетка «Хвилини мовчання». Вийде о 9:00 {day.strftime('%d.%m')}.\n"
+                    "Якщо треба — натисни кнопку нижче.", keyboard=DRAFT_KEYBOARD)
     if not dry_run:
         save(PENDING_FILE, {"date": day.isoformat(), "person": person.to_dict(),
                             "region": region, "preview_ts": int(time.time()),
@@ -321,51 +329,91 @@ def prepare(day: date, dry_run=False):
     return person, region
 
 
-EDIT_HELP = ("Щоб змінити: GitHub → репозиторій memorial-bot → Actions → «Хвилина мовчання» → "
-             "Run workflow → mode:\n"
-             "• replace — інша людина замість цієї\n"
-             "• nocut — те саме фото без вирізання (м'яким овалом)\n"
-             "• skip — сьогодні не публікувати")
-
-
 def edit(action):
-    """Правки редакторки до сьогоднішньої чернетки (до 9:00)."""
+    """Правки редакторки до сьогоднішньої чернетки (кнопки в Telegram або режими на GitHub).
+    Повертає True, якщо на сьогодні все вирішено (опубліковано чи скасовано)."""
     today = datetime.now(KYIV).date().isoformat()
     pending = load(PENDING_FILE, {})
     if pending.get("date") != today or pending.get("published"):
-        tg("sendMessage", chat_id=env("REVIEW_CHAT_ID"),
-           text="На сьогодні немає неопублікованої чернетки — змінювати нічого.")
-        return
+        review_send("На сьогодні немає неопублікованої чернетки — змінювати нічого.")
+        return True
     person = memorial.Person(**pending["person"])
     if action == "skip":
         pending["published"] = "cancelled"
         save(PENDING_FILE, pending)
-        tg("sendMessage", chat_id=env("REVIEW_CHAT_ID"), text="Добре, сьогодні «Хвилину мовчання» не публікуємо.")
-    elif action == "nocut":
+        review_send("⛔ Добре, сьогодні «Хвилину мовчання» не публікуємо.")
+        return True
+    if action == "now":
+        review_send("✅ Публікую зараз…")
+        publish(pending)
+        review_send("✅ Опубліковано.")
+        return True
+    if action == "nocut":
         pending["nocut"] = True
         save(PENDING_FILE, pending)
-        tg_send(env("REVIEW_CHAT_ID"), build_post(person, pending["region"]),
-                make_card(person, pending["region"], nocut=True), silent=False)
-        tg("sendMessage", chat_id=env("REVIEW_CHAT_ID"), text="👆 Нова картка — фото без вирізання. Вийде о 9:00.")
+        review_send(build_post(person, pending["region"]),
+                    make_card(person, pending["region"], nocut=True))
+        review_send("👆 Нова картка — фото без вирізання. Вийде о 9:00.", keyboard=DRAFT_KEYBOARD)
     elif action == "replace":
+        review_send("🔄 Шукаю іншу людину…")
         published = load(PUBLISHED_FILE, {"rejected": [], "log": []})
         published["rejected"].append(person.id)
         save(PUBLISHED_FILE, published)
         if not os.environ.get("FORCE_CATEGORY"):
             os.environ["FORCE_CATEGORY"] = person.cat                # та сама категорія
         prepare(datetime.now(KYIV).date())
+    return False
+
+
+def listen(until: datetime):
+    """Слухає кнопки під чернеткою до вказаного часу. True — сьогодні вже вирішено."""
+    token = review_token()
+    me = str(env("REVIEW_CHAT_ID"))
+    try:   # пропускаємо старі натискання
+        old = tg("getUpdates", _token=token, offset=-1, timeout=0)
+        offset = old[-1]["update_id"] + 1 if old else None
+    except Exception as e:
+        log("Кнопки недоступні:", e)
+        wait = (until - datetime.now(KYIV)).total_seconds()
+        if wait > 0:
+            time.sleep(wait)
+        return False
+    log("Слухаю кнопки до", until.strftime("%H:%M"))
+    while True:
+        left = int((until - datetime.now(KYIV)).total_seconds())
+        if left <= 0:
+            return False
+        try:
+            updates = tg("getUpdates", _token=token, offset=offset, timeout=min(50, left),
+                         allowed_updates=["callback_query"])
+        except Exception as e:
+            log("getUpdates:", e)
+            time.sleep(10)
+            continue
+        for u in updates:
+            offset = u["update_id"] + 1
+            q = u.get("callback_query")
+            if not q:
+                continue
+            try:
+                tg("answerCallbackQuery", _token=token, callback_query_id=q["id"])
+            except Exception:
+                pass
+            if str(q.get("from", {}).get("id")) != me:
+                continue
+            action = q.get("data")
+            log("Кнопка:", action)
+            try:
+                if edit(action):
+                    return True
+            except Exception as e:
+                log("Помилка дії", action, e)
+                review_send(f"⚠️ Не вдалося: {e}")
 
 
 def publish(pending):
     person = memorial.Person(**pending["person"])
     region = pending["region"]
-    if stop_requested(pending["preview_ts"]):
-        log("Редакторка написала «стоп» — сьогодні не публікуємо.")
-        tg("sendMessage", chat_id=env("REVIEW_CHAT_ID"), text="Добре, сьогоднішній пост скасовано.")
-        pending["published"] = "cancelled"
-        save(PENDING_FILE, pending)
-        return
-
     to_channel = env("PUBLISH_TO_CHANNEL", "false").lower() == "true"
     target = env("CHANNEL_ID") if to_channel else env("REVIEW_CHAT_ID")
     tg_send(target, build_post(person, region), make_card(person, region, nocut=pending.get("nocut", False)), silent=True)
@@ -399,7 +447,7 @@ def auto():
         prepare(today)
         pending = load(PENDING_FILE, {})
 
-    start = now.replace(hour=8, minute=0, second=0, microsecond=0)
+    start = now.replace(hour=6, minute=0, second=0, microsecond=0)
     end = now.replace(hour=10, minute=0, second=0, microsecond=0)
     now = datetime.now(KYIV)
     if pending.get("published") or not (start <= now < end):
@@ -407,10 +455,10 @@ def auto():
         return
     nine = now.replace(hour=9, minute=0, second=0, microsecond=0)
     if now < nine:
-        wait = (nine - now).total_seconds()
-        log(f"Чекаю до 9:00 ({int(wait // 60)} хв)")
-        time.sleep(wait)
-        # редакторка могла змінити чернетку, поки ми чекали — беремо свіжий стан із репозиторію
+        log(f"До 9:00 {int((nine - now).total_seconds() // 60)} хв — слухаю кнопки під чернеткою")
+        if listen(nine):
+            return
+        # редакторка могла змінити чернетку через GitHub — беремо свіжий стан із репозиторію
         subprocess.run(["git", "pull", "--quiet", "--rebase", "--autostash"], check=False)
         pending = load(PENDING_FILE, {})
         if pending.get("date") != today.isoformat() or pending.get("published"):
@@ -433,6 +481,11 @@ def main():
         publish(pending)
     elif mode == "auto":
         auto()
+    elif mode == "buttons":
+        # тест кнопок: свіжа чернетка з кнопками, слухаємо 20 хвилин
+        prepare(datetime.now(KYIV).date())
+        if not listen(datetime.now(KYIV) + timedelta(minutes=20)):
+            review_send("⏱ Тест кнопок завершено (20 хв минуло).")
     elif mode in ("replace", "nocut", "skip"):
         edit(mode)
     else:

@@ -11,7 +11,7 @@ on:
       mode:
         description: "replace — інша людина; nocut — фото без вирізання; skip — не публікувати сьогодні; test — чернетка тобі; now — опублікувати зараз; auto — звичайний режим; index — оновити список"
         type: choice
-        options: [replace, nocut, skip, test, now, auto, index]
+        options: [replace, nocut, skip, test, buttons, now, auto, index]
         default: test
       category:
         description: "Для тесту: кого взяти (auto — за графіком)"
@@ -30,7 +30,7 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 240   # ранковий запуск слухає кнопки з 6:15 до 9:00
     steps:
       - uses: actions/checkout@v4
 
@@ -49,6 +49,7 @@ jobs:
       - name: Запуск
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          MEMORIAL_BOT_TOKEN: ${{ secrets.MEMORIAL_BOT_TOKEN }}
           REVIEW_CHAT_ID: ${{ secrets.REVIEW_CHAT_ID }}
           CHANNEL_ID: ${{ vars.CHANNEL_ID }}
           PUBLISH_TO_CHANNEL: ${{ vars.PUBLISH_TO_CHANNEL }}
