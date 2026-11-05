@@ -416,7 +416,17 @@ def publish(pending):
     region = pending["region"]
     to_channel = env("PUBLISH_TO_CHANNEL", "false").lower() == "true"
     target = env("CHANNEL_ID") if to_channel else env("REVIEW_CHAT_ID")
-    tg_send(target, build_post(person, region), make_card(person, region, nocut=pending.get("nocut", False)), silent=True)
+    card_bytes = make_card(person, region, nocut=pending.get("nocut", False))
+    # публікує «меморіальний» бот; якщо його ще не додали в чат — старий бот
+    try:
+        tg_send(target, build_post(person, region), card_bytes, silent=True, token=review_token())
+    except RuntimeError as e:
+        if env("MEMORIAL_BOT_TOKEN") and ("chat not found" in str(e) or "Forbidden" in str(e)
+                                          or "not enough rights" in str(e)):
+            log("Новий бот не має доступу до чату — публікує старий:", e)
+            tg_send(target, build_post(person, region), card_bytes, silent=True)
+        else:
+            raise
     log("Telegram: опубліковано в", "канал" if to_channel else "чат перевірки (тестовий режим)")
 
     if to_channel:
