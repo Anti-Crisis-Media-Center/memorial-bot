@@ -175,6 +175,20 @@ def upscale(photo: Image.Image) -> Image.Image:
         return photo
 
 
+def plain_background(rgb: Image.Image) -> bool:
+    """Чи фото вже на рівному однотонному тлі (його обробив Меморіал)."""
+    import numpy as np
+    g = np.asarray(ImageOps.grayscale(rgb)).astype("float32")
+    h, w = g.shape
+    bw = max(4, int(min(h, w) * 0.04))
+    top = g[:bw, :]
+    sides = np.concatenate([g[: h * 2 // 3, :bw].ravel(), g[: h * 2 // 3, -bw:].ravel()])
+    band = np.concatenate([top.ravel(), sides])
+    # рівний фон: мало «шуму» і плавні зміни (допускаємо легкий градієнт)
+    smooth = np.abs(np.diff(top, axis=1)).mean() < 2.5
+    return band.std() < 14 and smooth
+
+
 def cut_person(photo: Image.Image):
     """Вирізає людину з фото (прибирає тло).
 
@@ -201,6 +215,11 @@ def cut_person(photo: Image.Image):
     except Exception:                                        # matting інколи падає — тоді без нього
         out = remove(rgb, session=_SESSION[0])
     a = np.array(out.getchannel("A")).astype("float32")
+    if plain_background(rgb):
+        # Меморіал часто вже прибрав тло (рівний сірий фон) — тут точна модель не помиляється,
+        # а «чистка» другою моделлю лише відрізає спорядження й одяг. Беремо контур як є.
+        out.putalpha(Image.fromarray(a.clip(0, 255).astype("uint8")))
+        return out
     b = np.array(remove(rgb, session=_SESSION[1]).getchannel("A")).astype("float32")
     # великі «чужі» шматки: є в birefnet, немає в human_seg
     foreign = ((a > 128) & (b < 40)).astype("uint8")
