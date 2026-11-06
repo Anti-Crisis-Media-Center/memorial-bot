@@ -238,6 +238,22 @@ def cut_person(photo: Image.Image):
         keep = cv2.dilate((labels == main).astype("uint8"),
                           cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kk * 2 + 1, kk * 2 + 1)))
         a = a * keep
+    # голова: панама, кепка, шолом часто зливаються з тлом (камуфляж на зелені).
+    # У зоні голови беремо об'єднання масок обох моделей, а якщо верх голови все одно «зрізаний» —
+    # вирізанню не довіряємо (буде м'який овал)
+    face = find_face(photo)
+    if face is not None:
+        fx, fy, fw, fh = face
+        hh, ww = a.shape
+        x0, x1 = max(0, int(fx - 0.45 * fw)), min(ww, int(fx + 1.45 * fw))
+        y0, y1 = max(0, int(fy - 0.9 * fh)), min(hh, int(fy + 0.6 * fh))
+        a[y0:y1, x0:x1] = np.maximum(a[y0:y1, x0:x1], b[y0:y1, x0:x1])
+        ty0, ty1 = max(0, int(fy - 0.35 * fh)), max(1, int(fy + 0.05 * fh))
+        tx0, tx1 = int(fx + 0.15 * fw), int(fx + 0.85 * fw)
+        top = a[ty0:ty1, tx0:tx1]
+        if top.size and (top > 128).mean() < 0.6:
+            print("cut_person: верх голови зрізано — фото без вирізання")
+            return None
     # наскільки моделі згодні щодо силуету
     am, bm = a > 128, b > 128
     union = (am | bm).sum()
