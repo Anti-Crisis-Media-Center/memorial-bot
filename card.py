@@ -272,7 +272,7 @@ def keep_main_figure(alpha: Image.Image) -> Image.Image:
     return Image.fromarray((a * keep).astype("uint8"))
 
 
-MEMORIAL_LOGO_FILE = "memorial_L31.png"   # лого «Меморіалу» внизу картки (варіанти — у папці marks)
+MEMORIAL_LOGO_FILE = "memorial_white.png"   # лого «Меморіалу» внизу картки (варіанти — у папці marks)
 
 BACKGROUNDS = {                   # підкладка від дизайнера: рваний папір кольору категорії
     "civilians": ROOT / "backgrounds" / "civilians_birds.jpg",  # графіт із птахами + теплий графітово-синій папір
