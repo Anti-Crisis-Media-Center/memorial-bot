@@ -272,6 +272,8 @@ def keep_main_figure(alpha: Image.Image) -> Image.Image:
     return Image.fromarray((a * keep).astype("uint8"))
 
 
+MEMORIAL_LOGO_FILE = "memorial_L31.png"   # лого «Меморіалу» внизу картки (варіанти — у папці marks)
+
 BACKGROUNDS = {                   # підкладка від дизайнера: рваний папір кольору категорії
     "civilians": ROOT / "backgrounds" / "civilians_birds.jpg",  # графіт із птахами + теплий графітово-синій папір
     "children": ROOT / "backgrounds" / "civilians_birds.jpg",
@@ -484,7 +486,7 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
             y += 44
 
     # --- низ: «Хвилина мовчання» + лого «Меморіалу» (на прохання платформи — замість голуба й жетона)
-    MEMORIAL_LOGO = ROOT / "marks" / "memorial_L31.png"      # біле «Меморіал», червоне «Платформа пам'яті»
+    MEMORIAL_LOGO = ROOT / "marks" / MEMORIAL_LOGO_FILE
     lines = []
     if MEMORIAL_LOGO.exists():
         ml = Image.open(MEMORIAL_LOGO).convert("RGBA")
