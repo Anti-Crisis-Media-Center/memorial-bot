@@ -272,6 +272,12 @@ DRAFT_KEYBOARD = {"inline_keyboard": [
 ]}
 
 
+PICK_KEYBOARD = {"inline_keyboard": [
+    [{"text": "1️⃣ Варіант 1 (вирізана)", "callback_data": "pick1"},
+     {"text": "2️⃣ Варіант 2 (овал)", "callback_data": "pick2"}],
+] + DRAFT_KEYBOARD["inline_keyboard"]}
+
+
 def review_send(text, card_bytes=None, keyboard=None):
     """Повідомлення редакторці від «меморіального» бота."""
     if card_bytes is not None:
@@ -332,10 +338,17 @@ def prepare(day: date, dry_run=False):
     if not person:
         raise RuntimeError("Не знайдено жодної людини для поста")
     text = build_post(person, region)
+    returning = person.id in published.get("postponed", {})
     review_send(text, make_card(person, region))
+    if returning and not dry_run:
+        # цю людину вже колись замінювали — показуємо ще й варіант без вирізання, щоб обрати
+        review_send("Варіант 2 — те саме фото без вирізання (м'яким овалом):",
+                    make_card(person, region, nocut=True))
+        review_send("↩️ Цю людину ти вже колись замінювала, тож ось два варіанти картки. "
+                    "Якщо нічого не натиснеш — о 9:00 вийде варіант 1.", keyboard=PICK_KEYBOARD)
     if dry_run:
         review_send("👆 Чернетка «Хвилини мовчання». Це тест, у канал не піде.")
-    else:
+    elif not returning:
         review_send(f"👆 Чернетка «Хвилини мовчання». Вийде о 9:00 {day.strftime('%d.%m')}.\n"
                     "Якщо треба — натисни кнопку нижче.", keyboard=DRAFT_KEYBOARD)
     if not dry_run:
@@ -364,6 +377,11 @@ def edit(action):
         publish(pending)
         review_send("✅ Опубліковано.")
         return True
+    if action in ("pick1", "pick2"):
+        pending["nocut"] = action == "pick2"
+        save(PENDING_FILE, pending)
+        review_send(f"👍 Обрано варіант {action[-1]}. Вийде о 9:00.", keyboard=DRAFT_KEYBOARD)
+        return False
     if action == "nocut":
         pending["nocut"] = True
         save(PENDING_FILE, pending)
@@ -456,6 +474,7 @@ def publish(pending):
 
     published = load(PUBLISHED_FILE, {"rejected": [], "log": []})
     if to_channel:
+        published.get("postponed", {}).pop(person.id, None)      # пом'янули — більше не «відкладена»
         published["log"].append({"id": person.id, "name": person.name, "cat": person.cat,
                                  "region": region, "date": pending["date"], "url": person.url,
                                  "channel": env("CHANNEL_ID")})
