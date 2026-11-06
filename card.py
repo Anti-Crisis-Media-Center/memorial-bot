@@ -412,9 +412,9 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         alpha = Image.new("L", size, 0)
         cx = (fx + fw / 2) * scale if face is not None else size[0] / 2
         cy = (fy + fh / 2) * scale if face is not None else size[1] * 0.4
-        rx, ry = size[0] * 0.48, size[1] * 0.75
-        ImageDraw.Draw(alpha).ellipse((cx - rx, cy - ry * 0.6, cx + rx, cy + ry * 1.6), fill=255)
-        alpha = alpha.filter(ImageFilter.GaussianBlur(size[0] * 0.08))
+        r = (fw * scale if face is not None else size[0] * 0.3)
+        ImageDraw.Draw(alpha).ellipse((cx - r * 1.6, cy - r * 1.5, cx + r * 1.6, cy + r * 3.2), fill=255)
+        alpha = alpha.filter(ImageFilter.GaussianBlur(r * 0.45))
     else:
         alpha = fade_mask(size, left=0.35, top=0.25, right=0.06, bottom=0.18)
 
@@ -425,7 +425,7 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     # ліва колонка з текстом лишається чистою: людина м'яко зникає ліворуч
     ramp = Image.linear_gradient("L").rotate(90, expand=True).resize((W, H))   # 0 зліва → 255 справа
     ramp = ramp.point(lambda v: 0 if v < 100 else min(255, int((v - 100) * 255 / 70)))
-    if BACKGROUNDS.get(category):
+    if on_paper:
         ramp = Image.new("L", (W, H), 255)      # людина ціла, текст лягає поверх
     card.paste(layer, (0, 0), ImageChops.multiply(mask, ramp))
 
