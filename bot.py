@@ -447,34 +447,62 @@ def publish(pending):
     save(PENDING_FILE, pending)
 
 
+def sync_state(push=False, msg="Оновлення стану"):
+    """Синхронізує папку state з GitHub, щоб паралельні запуски бачили одне одного."""
+    def run(*a):
+        return subprocess.run(list(a), check=False, capture_output=True, text=True)
+    if push:
+        run("git", "add", "state")
+        if run("git", "diff", "--cached", "--quiet").returncode:
+            run("git", "-c", "user.name=memorial-bot", "-c",
+                "user.email=memorial-bot@users.noreply.github.com", "commit", "-m", msg)
+    run("git", "pull", "--quiet", "--rebase", "--autostash", "-X", "theirs")
+    if push:
+        r = run("git", "push")
+        if r.returncode:
+            log("Не вдалося зберегти стан:", r.stderr.strip()[:300])
+
+
 def auto():
+    sync_state()                                  # свіжий стан: можливо, інший запуск уже все зробив
     now = datetime.now(KYIV)
     today = now.date()
     pending = load(PENDING_FILE, {})
-
-    if pending.get("date") != today.isoformat():
-        log("Готую пост на сьогодні")
-        prepare(today)
-        pending = load(PENDING_FILE, {})
-
-    start = now.replace(hour=6, minute=0, second=0, microsecond=0)
-    end = now.replace(hour=10, minute=0, second=0, microsecond=0)
-    now = datetime.now(KYIV)
-    if pending.get("published") or not (start <= now < end):
-        log("Публікувати зараз не час або вже опубліковано.")
+    if pending.get("date") == today.isoformat() and pending.get("published"):
+        log("Сьогодні вже опубліковано або скасовано.")
+        return
+    if not (now.replace(hour=6, minute=0) <= now < now.replace(hour=10, minute=0)):
+        log("Не ранкове вікно — нічого не роблю.")
         return
     nine = now.replace(hour=9, minute=0, second=0, microsecond=0)
-    if now < nine:
-        log(f"До 9:00 {int((nine - now).total_seconds() // 60)} хв — слухаю кнопки під чернеткою")
+
+    if pending.get("date") != today.isoformat():
+        if now >= nine.replace(hour=8, minute=30):
+            # запізнилися: без перевірки редакторки не публікуємо — лише чернетка з кнопками
+            log("Запізно для звичайного графіка — чернетка без автопублікації")
+            prepare(today)
+            sync_state(push=True, msg="Чернетка (запізніла)")
+            review_send("⏰ Чернетка підготувалася із запізненням, тому сама не вийде. "
+                        "Якщо все добре — натисни «✅ Опублікувати зараз» протягом 40 хв.")
+            listen(datetime.now(KYIV) + timedelta(minutes=40))
+            return
+        log("Готую пост на сьогодні")
+        prepare(today)
+        sync_state(push=True, msg=f"Чернетка {today}")
+        pending = load(PENDING_FILE, {})
+
+    if datetime.now(KYIV) < nine:
+        log(f"До 9:00 {int((nine - datetime.now(KYIV)).total_seconds() // 60)} хв — слухаю кнопки")
         if listen(nine):
             return
-        # редакторка могла змінити чернетку через GitHub — беремо свіжий стан із репозиторію
-        subprocess.run(["git", "pull", "--quiet", "--rebase", "--autostash"], check=False)
-        pending = load(PENDING_FILE, {})
-        if pending.get("date") != today.isoformat() or pending.get("published"):
-            log("Чернетку скасовано або вже опубліковано.")
-            return
+    # редакторка могла змінити чернетку через GitHub — беремо свіжий стан
+    sync_state()
+    pending = load(PENDING_FILE, {})
+    if pending.get("date") != today.isoformat() or pending.get("published"):
+        log("Чернетку скасовано або вже опубліковано.")
+        return
     publish(pending)
+    sync_state(push=True, msg=f"Опубліковано {today}")
 
 
 def main():
