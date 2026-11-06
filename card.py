@@ -483,20 +483,18 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
             d.text((margin + 42, y), line, font=city_font, fill=WHITE)
             y += 44
 
-    # --- низ: знак «Меморіалу» + підпис
-    mark_path = MARKS.get(category)
-    mh = 150 if category == "militaries" else 104   # жетон з ниткою — трохи більший
-    base = H - 80 - 104 - (mh - 104) // 2
-    tx = margin
-    if mark_path and mark_path.exists():
-        mark = Image.open(mark_path).convert("RGBA")
-        mark = mark.resize((int(mark.width * mh / mark.height), mh), Image.LANCZOS)
-        card.paste(mark, (margin - (10 if category == "militaries" else 0), base), mark)
-        tx = margin + mark.width + 26
-    lines = [((tx, base + (mh - 104) // 2 + 16), "Хвилина мовчання", font("Bold", 34), YELLOW)]
-    if credit:
-        lines.append(((tx, base + (mh - 104) // 2 + 60), "Платформа пам'яті «Меморіал»",
-                      font("SemiBold", 24), (232, 234, 240)))
+    # --- низ: «Хвилина мовчання» + лого «Меморіалу» (на прохання платформи — замість голуба й жетона)
+    MEMORIAL_LOGO = ROOT / "marks" / "memorial_L31.png"      # біле «Меморіал», червоне «Платформа пам'яті»
+    lines = []
+    if MEMORIAL_LOGO.exists():
+        ml = Image.open(MEMORIAL_LOGO).convert("RGBA")
+        mw = 300
+        ml = ml.resize((mw, int(ml.height * mw / ml.width)), Image.LANCZOS)
+        ly = H - 78 - ml.height
+        lines.append(((margin, ly - 58), "Хвилина мовчання", font("Bold", 36), YELLOW))
+    else:
+        ml, ly = None, 0
+        lines.append(((margin, H - 160), "Хвилина мовчання", font("Bold", 34), YELLOW))
     # м'яка тінь під підписом — читається і на папері, і на одязі людини
     sh = Image.new("L", (W, H), 0)
     sd = ImageDraw.Draw(sh)
@@ -505,6 +503,10 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     card.paste((0, 0, 0), (0, 0), sh.filter(ImageFilter.GaussianBlur(5)))
     for xy, text, f, color in lines:
         d.text(xy, text, font=f, fill=color)
+    if ml is not None:
+        shadow = ml.getchannel("A").filter(ImageFilter.GaussianBlur(5)).point(lambda v: int(v * 0.8))
+        card.paste((0, 0, 0), (margin + 2, ly + 3), shadow)
+        card.paste(ml, (margin, ly), ml)
     if LOGO.exists():
         # лінії логотипа вже потовщені у файлі logo.png, тут лише якісне зменшення
         logo = Image.open(LOGO).convert("RGBA")
