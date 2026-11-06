@@ -277,14 +277,6 @@ def cut_person(photo: Image.Image, contour=None):
         keep = cv2.dilate((labels == main).astype("uint8"),
                           cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kk * 2 + 1, kk * 2 + 1)))
         a = a * keep
-    if face is not None:
-        # якщо верх голови все одно зрізаний — вирізанню не довіряємо (буде м'який овал)
-        fx, fy, fw, fh = face
-        ty0, ty1 = max(0, int(fy - 0.35 * fh)), max(1, int(fy + 0.05 * fh))
-        top = a[ty0:ty1, int(fx + 0.15 * fw):int(fx + 0.85 * fw)]
-        if top.size and (top > 128).mean() < 0.6:
-            print("cut_person: верх голови зрізано — фото без вирізання")
-            return None
     # наскільки моделі згодні щодо силуету
     am, bm = a > 128, b > 128
     union = (am | bm).sum()
@@ -447,6 +439,8 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         r = (fw * scale if face is not None else size[0] * 0.3)
         ImageDraw.Draw(alpha).ellipse((cx - r * 1.6, cy - r * 1.5, cx + r * 1.6, cy + r * 3.2), fill=255)
         alpha = alpha.filter(ImageFilter.GaussianBlur(r * 0.45))
+        # краї самого фото (особливо верх) теж розчиняємо, щоб не було прямих зрізів
+        alpha = ImageChops.multiply(alpha, fade_mask(size, left=0.2, top=0.2, right=0.1, bottom=0))
     else:
         alpha = fade_mask(size, left=0.35, top=0.25, right=0.06, bottom=0.18)
 

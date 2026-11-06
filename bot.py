@@ -603,10 +603,11 @@ def main():
     elif mode == "auto":
         auto()
     elif mode == "buttons":
-        # тест кнопок: свіжа чернетка з кнопками, слухаємо 20 хвилин
+        # тест кнопок: свіжа чернетка з кнопками, слухаємо 45 хвилин
         prepare(datetime.now(KYIV).date())
-        if not listen(datetime.now(KYIV) + timedelta(minutes=20)):
-            review_send("⏱ Тест кнопок завершено (20 хв минуло).")
+        if not listen(datetime.now(KYIV) + timedelta(minutes=45)):
+            review_send("⏱ Тест кнопок завершено (45 хв минуло) — кнопки більше не діють.",
+                        keyboard={"remove_keyboard": True})
     elif mode in ("replace", "nocut", "skip"):
         edit(mode)
     else:
