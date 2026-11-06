@@ -70,6 +70,22 @@ def hashtag(word: str) -> str:
     return "#" + re.sub(r"[^\wІіЇїЄєҐґ]", "", word)
 
 
+PARTNER_NAME = "Антикризовим медіа-центром"   # «спільно з …» — орудний відмінок
+
+
+def partner_line(person, html_mode, network):
+    """Друге речення у форматі, який попросив «Меморіал»."""
+    if person.cat == "militaries":
+        whom = "полеглих захисниць" if is_female(person) else "полеглих захисників"
+    else:
+        whom = "загиблих цивільних"
+    if html_mode and network == "telegram":
+        name = f'<a href="{MEMORIAL_TELEGRAM}">Меморіал</a>'
+    else:
+        name = "Меморіал"
+    return f"Платформа пам'яті {name} спільно з {PARTNER_NAME} вшановує пам'ять {whom}."
+
+
 def build_post(person, region, html_mode=True, network="telegram"):
     """Повертає текст поста. html_mode=True — розмітка для Telegram, False — простий текст (Facebook)."""
     esc = (lambda s: html.escape(s, quote=False)) if html_mode else (lambda s: s)
@@ -86,7 +102,7 @@ def build_post(person, region, html_mode=True, network="telegram"):
         title = person.name
     else:
         title = f"{person.name}, {age_words(age_n)}"
-    lines = [OPENING, ""]
+    lines = [OPENING + " " + partner_line(person, html_mode, network), ""]
     lines.append(f"<b>{esc(title)}</b>" if html_mode else title)
 
     # 2. Місто · дата
