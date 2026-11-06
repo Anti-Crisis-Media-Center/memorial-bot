@@ -1,7 +1,8 @@
 {
  "rejected": [
   "6904",
-  "10701"
+  "10701",
+  "10024"
  ],
  "log": [
   {
@@ -344,6 +345,15 @@
    "region": "donetsk",
    "date": "2026-11-05",
    "url": "https://memorial.ua/obituaries/militaries/trotsenko-maksym-5853",
+   "channel": "-5294316060"
+  },
+  {
+   "id": "5704",
+   "name": "Сергій Очиченко",
+   "cat": "civilians",
+   "region": "luhansk",
+   "date": "2026-11-06",
+   "url": "https://memorial.ua/obituaries/civilians/ochychenko-serhii-5704",
    "channel": "-5294316060"
   }
  ]
