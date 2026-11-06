@@ -191,7 +191,7 @@ def plain_background(rgb: Image.Image) -> bool:
 
 def cut_with_contour(rgb: Image.Image, contour):
     """Вирізання з підказкою редакторки: контур (точки 0..999 від розміру фото) задає, де людина.
-    Усе поза контуром — тло, глибоко всередині — людина, біля лінії контуру край визначає нейромережа."""
+    Усе поза контуром — тло; всередині край визначають нейромережі, дірки в силуеті заповнюються."""
     import cv2
     import numpy as np
     from rembg import remove
@@ -202,11 +202,18 @@ def cut_with_contour(rgb: Image.Image, contour):
     band = max(5, int(min(w, h) * 0.035))
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (band * 2 + 1, band * 2 + 1))
     outer = cv2.dilate(inside, k)                 # трохи ширше за лінію — запас на неточність пальця
-    core = cv2.erode(inside, k)                   # точно людина
     out = remove(rgb, session=_SESSION[0])
     a = np.array(out.getchannel("A")).astype("float32")
-    a = np.minimum(a, outer.astype("float32"))    # поза контуром — нічого
-    a = np.maximum(a, core.astype("float32"))     # усередині — усе (панама, рука, рюкзак)
+    b = np.array(remove(rgb, session=_SESSION[-1]).getchannel("A")).astype("float32")
+    a = np.maximum(a, b)                           # усе, що хоч одна модель вважає людиною…
+    a = np.minimum(a, outer.astype("float32"))     # …але лише всередині контуру
+    # дірки всередині силуету (пропущена панама, тінь на одязі) заповнюємо
+    fig = (a > 128).astype(np.uint8)
+    flood = fig.copy()
+    mask = np.zeros((h + 2, w + 2), np.uint8)
+    cv2.floodFill(flood, mask, (0, 0), 1)
+    holes = (flood == 0) & (inside > 0)
+    a[holes] = 255
     out.putalpha(Image.fromarray(a.clip(0, 255).astype("uint8")))
     return out
 
