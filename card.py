@@ -372,8 +372,19 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         # спершу чіткий контур, а розчиняється лише вузька смужка (~35 px) біля краю фото
         edge = 35 / size[0]
         top_cut = alpha.crop((0, 0, size[0], 3)).getextrema()[1] > 100      # голова обрізана верхом фото
-        alpha = ImageChops.multiply(alpha, fade_mask(size, left=edge, top=(35 / size[1]) if top_cut else 0,
-                                                     right=edge if right_in else 0, bottom=0))
+        left_f = edge
+        right_f = edge if right_in else 0
+        if face is not None:
+            # рука чи плече, обрізані краєм фото збоку, не «висять у повітрі»: плавно розчиняємо
+            # усе від краю фото майже до самого тіла (обличчя й плечі лишаються щільними)
+            fl = (fx - fw * 0.55) * scale                          # трохи лівіше обличчя
+            fr = size[0] - (fx + fw * 1.55) * scale                # трохи правіше обличчя
+            if alpha.crop((0, 0, 10, size[1])).getextrema()[1] > 60 and fl > 60:
+                left_f = max(edge, min(0.45, fl * 0.85 / size[0]))
+            if right_in and alpha.crop((size[0] - 10, 0, size[0], size[1])).getextrema()[1] > 60 and fr > 60:
+                right_f = max(edge, min(0.45, fr * 0.85 / size[0]))
+        alpha = ImageChops.multiply(alpha, fade_mask(size, left=left_f, top=(35 / size[1]) if top_cut else 0,
+                                                     right=right_f, bottom=0))
     elif cut is not None:
         alpha = cut.getchannel("A").resize(size, Image.LANCZOS)
         alpha = alpha.filter(ImageFilter.MinFilter(5)).filter(ImageFilter.GaussianBlur(8))
