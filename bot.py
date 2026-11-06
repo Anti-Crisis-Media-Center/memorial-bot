@@ -238,8 +238,25 @@ def tg(method, _token=None, **params):
     return data["result"]
 
 
-def make_card(person, region, nocut=False):
-    return card.card_for_person(person, city_line_city(person, region), nocut=nocut)
+def make_card(person, region, nocut=False, contour=None):
+    return card.card_for_person(person, city_line_city(person, region), nocut=nocut, contour=contour)
+
+
+CONTOUR_PAGE = "https://anti-crisis-media-center.github.io/memorial-bot/contour.html"
+
+
+def contour_keyboard(person):
+    """Кнопка під полем вводу: відкриває сторінку, де редакторка обводить людину пальцем."""
+    from urllib.parse import urlencode
+    url = CONTOUR_PAGE + "?" + urlencode({"img": person.photo, "id": person.id})
+    return {"keyboard": [[{"text": "✏️ Обвести контур", "web_app": {"url": url}}]],
+            "resize_keyboard": True, "one_time_keyboard": True}
+
+
+def offer_contour(person):
+    review_send("Якщо людину вирізано погано — натисни ✏️ «Обвести контур» під полем повідомлення "
+                "і обведи її пальцем. Бот перемалює картку за твоїм контуром.",
+                keyboard=contour_keyboard(person))
 
 
 def tg_send(chat_id, text, card_bytes, silent=True, token=None, keyboard=None):
@@ -352,6 +369,8 @@ def prepare(day: date, dry_run=False):
         review_send(f"👆 Чернетка «Хвилини мовчання». Вийде о 9:00 {day.strftime('%d.%m')}.\n"
                     "Якщо треба — натисни кнопку нижче.", keyboard=DRAFT_KEYBOARD)
     if not dry_run:
+        offer_contour(person)
+    if not dry_run:
         save(PENDING_FILE, {"date": day.isoformat(), "person": person.to_dict(),
                             "region": region, "preview_ts": int(time.time()),
                             "published": False})
@@ -384,6 +403,7 @@ def edit(action):
         return False
     if action == "nocut":
         pending["nocut"] = True
+        pending.pop("contour", None)
         save(PENDING_FILE, pending)
         review_send(build_post(person, pending["region"]),
                     make_card(person, pending["region"], nocut=True))
@@ -398,6 +418,24 @@ def edit(action):
             os.environ["FORCE_CATEGORY"] = person.cat                # та сама категорія
         prepare(datetime.now(KYIV).date())
     return False
+
+
+def contour_received(data):
+    """Редакторка обвела людину — перемальовуємо картку за її контуром."""
+    pending = load(PENDING_FILE, {})
+    person = memorial.Person(**pending["person"])
+    if str(data.get("id")) != str(person.id):
+        review_send("Цей контур — для попередньої чернетки. Обведи людину з поточної.")
+        offer_contour(person)
+        return
+    review_send("✏️ Дякую! Перемальовую картку за твоїм контуром…", keyboard={"remove_keyboard": True})
+    pending["contour"] = data["p"]
+    pending["nocut"] = False
+    save(PENDING_FILE, pending)
+    review_send(build_post(person, pending["region"]),
+                make_card(person, pending["region"], contour=data["p"]))
+    review_send("👆 Картка за твоїм контуром. Вийде о 9:00, якщо нічого не зміниш.", keyboard=DRAFT_KEYBOARD)
+    offer_contour(person)
 
 
 def listen(until: datetime):
@@ -420,13 +458,21 @@ def listen(until: datetime):
             return False
         try:
             updates = tg("getUpdates", _token=token, offset=offset, timeout=min(50, left),
-                         allowed_updates=["callback_query"])
+                         allowed_updates=["callback_query", "message"])
         except Exception as e:
             log("getUpdates:", e)
             time.sleep(10)
             continue
         for u in updates:
             offset = u["update_id"] + 1
+            m = u.get("message") or {}
+            if m.get("web_app_data") and str(m.get("from", {}).get("id")) == me:
+                try:
+                    contour_received(json.loads(m["web_app_data"]["data"]))
+                except Exception as e:
+                    log("Контур:", e)
+                    review_send(f"⚠️ Не вдалося застосувати контур: {e}")
+                continue
             q = u.get("callback_query")
             if not q:
                 continue
@@ -451,7 +497,8 @@ def publish(pending):
     region = pending["region"]
     to_channel = env("PUBLISH_TO_CHANNEL", "false").lower() == "true"
     target = env("CHANNEL_ID") if to_channel else env("REVIEW_CHAT_ID")
-    card_bytes = make_card(person, region, nocut=pending.get("nocut", False))
+    card_bytes = make_card(person, region, nocut=pending.get("nocut", False),
+                           contour=pending.get("contour"))
     # публікує «меморіальний» бот; якщо його ще не додали в чат — старий бот
     try:
         tg_send(target, build_post(person, region), card_bytes, silent=True, token=review_token())

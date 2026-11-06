@@ -189,7 +189,29 @@ def plain_background(rgb: Image.Image) -> bool:
     return band.std() < 14 and smooth
 
 
-def cut_person(photo: Image.Image):
+def cut_with_contour(rgb: Image.Image, contour):
+    """Вирізання з підказкою редакторки: контур (точки 0..999 від розміру фото) задає, де людина.
+    Усе поза контуром — тло, глибоко всередині — людина, біля лінії контуру край визначає нейромережа."""
+    import cv2
+    import numpy as np
+    from rembg import remove
+    w, h = rgb.size
+    poly = np.array([[x * (w - 1) / 999, y * (h - 1) / 999] for x, y in contour], dtype=np.int32)
+    inside = np.zeros((h, w), np.uint8)
+    cv2.fillPoly(inside, [poly], 255)
+    band = max(5, int(min(w, h) * 0.035))
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (band * 2 + 1, band * 2 + 1))
+    outer = cv2.dilate(inside, k)                 # трохи ширше за лінію — запас на неточність пальця
+    core = cv2.erode(inside, k)                   # точно людина
+    out = remove(rgb, session=_SESSION[0])
+    a = np.array(out.getchannel("A")).astype("float32")
+    a = np.minimum(a, outer.astype("float32"))    # поза контуром — нічого
+    a = np.maximum(a, core.astype("float32"))     # усередині — усе (панама, рука, рюкзак)
+    out.putalpha(Image.fromarray(a.clip(0, 255).astype("uint8")))
+    return out
+
+
+def cut_person(photo: Image.Image, contour=None):
     """Вирізає людину з фото (прибирає тло).
 
     Контур веде birefnet-portrait з обробкою країв (alpha matting) — так акуратніше волосся.
@@ -208,6 +230,8 @@ def cut_person(photo: Image.Image):
     if _SESSION is None:
         _SESSION = [new_session("birefnet-portrait"), new_session("u2net_human_seg")]
     rgb = photo.convert("RGB")
+    if contour:
+        return cut_with_contour(rgb, contour)
     try:
         out = remove(rgb, session=_SESSION[0], alpha_matting=True,
                      alpha_matting_foreground_threshold=235,
@@ -322,7 +346,8 @@ def background(category: str):
     return Image.composite(lifted, bg, dark.filter(ImageFilter.GaussianBlur(1)))
 
 
-def make_card(photo: Image.Image, *, category, name, subtitle, city, years, credit=True, nocut=False) -> bytes:
+def make_card(photo: Image.Image, *, category, name, subtitle, city, years, credit=True, nocut=False,
+              contour=None) -> bytes:
     accent = ACCENT.get(category, ACCENT["civilians"])
     card = background(category)
 
@@ -358,7 +383,7 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     size = (max(1, int(photo.width * scale)), max(1, int(photo.height * scale)))
     duo = duo.resize(size, Image.LANCZOS).filter(ImageFilter.UnsharpMask(radius=2, percent=60, threshold=2))
 
-    cut = None if nocut else cut_person(photo)       # nocut — редакторка попросила фото без вирізання
+    cut = None if nocut else cut_person(photo, contour)       # nocut — редакторка попросила фото без вирізання
     on_paper = cut is not None and BACKGROUNDS.get(category)
     if on_paper:
         # на підкладці з папером людина вирізана чітко по контуру, без розчинення країв;
@@ -537,7 +562,7 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     return out.getvalue()
 
 
-def card_for_person(person, city: str, nocut: bool = False) -> bytes:
+def card_for_person(person, city: str, nocut: bool = False, contour=None) -> bytes:
     from memorial import parse_date
     raw = requests.get(person.photo, timeout=60).content
     photo = Image.open(io.BytesIO(raw))
@@ -549,4 +574,4 @@ def card_for_person(person, city: str, nocut: bool = False) -> bytes:
     dd = parse_date(person.f("Дата загибелі"))
     years = f"{b[0]} — {dd[0]}" if b and dd else ""
     return make_card(photo, category=person.cat, name=person.name, subtitle=subtitle,
-                     city=city, years=years, nocut=nocut)
+                     city=city, years=years, nocut=nocut, contour=contour)
