@@ -300,6 +300,21 @@ def facebook_publish(person, region):
 
 # ---------- сценарії ----------
 
+POSTPONE_DAYS = 45
+
+
+def postponed_ids(published, day: date):
+    """Люди, яких редакторка замінила кнопкою «Інша людина» нещодавно — тимчасово не беремо."""
+    out = []
+    for pid, d in published.get("postponed", {}).items():
+        try:
+            if (day - date.fromisoformat(d)).days < POSTPONE_DAYS:
+                out.append(pid)
+        except ValueError:
+            pass
+    return out
+
+
 def prepare(day: date, dry_run=False):
     index = load(INDEX_FILE, None)
     if not index or not index.get("people"):
@@ -309,8 +324,9 @@ def prepare(day: date, dry_run=False):
     published = load(PUBLISHED_FILE, {"rejected": [], "log": []})
     rng = random.Random()
     channel = env("CHANNEL_ID")
+    skip = list(published["rejected"]) + postponed_ids(published, day)
     person, region = choose(index, [p["id"] for p in published["log"] if p.get("channel") == channel],
-                            published["rejected"], day, rng)
+                            skip, day, rng)
     if not dry_run:
         save(PUBLISHED_FILE, published)  # зберігаємо відхилених
     if not person:
@@ -357,7 +373,8 @@ def edit(action):
     elif action == "replace":
         review_send("🔄 Шукаю іншу людину…")
         published = load(PUBLISHED_FILE, {"rejected": [], "log": []})
-        published["rejected"].append(person.id)
+        # не «опрацьована» назавжди: людина повернеться в добірку через POSTPONE_DAYS днів
+        published.setdefault("postponed", {})[person.id] = datetime.now(KYIV).date().isoformat()
         save(PUBLISHED_FILE, published)
         if not os.environ.get("FORCE_CATEGORY"):
             os.environ["FORCE_CATEGORY"] = person.cat                # та сама категорія

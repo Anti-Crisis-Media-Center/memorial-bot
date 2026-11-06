@@ -1,7 +1,6 @@
 {
  "rejected": [
   "6904",
-  "10701",
   "10024"
  ],
  "log": [
@@ -356,5 +355,8 @@
    "url": "https://memorial.ua/obituaries/civilians/ochychenko-serhii-5704",
    "channel": "-5294316060"
   }
- ]
+ ],
+ "postponed": {
+  "10701": "2026-11-05"
+ }
 }
