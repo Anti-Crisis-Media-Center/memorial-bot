@@ -250,7 +250,7 @@ def contour_keyboard(person):
     from urllib.parse import urlencode
     url = CONTOUR_PAGE + "?" + urlencode({"img": person.photo, "id": person.id})
     return {"keyboard": [[{"text": "✏️ Обвести контур", "web_app": {"url": url}}]],
-            "resize_keyboard": True, "one_time_keyboard": True}
+            "resize_keyboard": True, "is_persistent": True}
 
 
 def offer_contour(person):
