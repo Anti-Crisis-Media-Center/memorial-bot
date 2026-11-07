@@ -240,9 +240,8 @@ def cut_person(photo: Image.Image, contour=None):
     if contour:
         return cut_with_contour(rgb, contour)
     try:
-        out = remove(rgb, session=_SESSION[0], alpha_matting=True,
-                     alpha_matting_foreground_threshold=235,
-                     alpha_matting_background_threshold=15, alpha_matting_erode_size=8)
+        # без alpha matting: на світлому тлі він лишав «пух» зі шматочків стіни навколо обличчя
+        out = remove(rgb, session=_SESSION[0])
     except Exception:                                        # matting інколи падає — тоді без нього
         out = remove(rgb, session=_SESSION[0])
     a = np.array(out.getchannel("A")).astype("float32")
@@ -389,9 +388,11 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         # плавно зникає лише низ, якщо фото не дістає до низу картки
         alpha = cut.getchannel("A").resize(size, Image.LANCZOS)
         # контур уже акуратний (matting); прибираємо ледь помітний серпанок і м'яко розмиваємо край на 1–2 px
-        alpha = alpha.point(lambda v: 0 if v < 18 else min(255, int((v - 18) * 255 / 190)))
+        # чіткий край: напівпрозору облямівку (там змішане тло) відрізаємо, підтягуємо край
+        # на 1–2 px всередину і лише потім ледь розмиваємо
+        alpha = alpha.point(lambda v: 0 if v < 110 else min(255, int((v - 110) * 255 / 100)))
         alpha = keep_main_figure(alpha)
-        alpha = alpha.filter(ImageFilter.GaussianBlur(1.3))
+        alpha = alpha.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(1.1))
         # людина не заходить на колонку тексту: зсуваємо праворуч (обличчя лишається в кадрі)
         bbox = alpha.point(lambda v: 255 if v > 40 else 0).getbbox()
         if bbox and ox + bbox[0] < 545:
