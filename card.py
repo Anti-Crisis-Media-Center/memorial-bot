@@ -394,9 +394,20 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         # контур уже акуратний (matting); прибираємо ледь помітний серпанок і м'яко розмиваємо край на 1–2 px
         # чіткий край: напівпрозору облямівку (там змішане тло) відрізаємо, підтягуємо край
         # на 1–2 px всередину і лише потім ледь розмиваємо
+        raw = alpha
         alpha = alpha.point(lambda v: 0 if v < 110 else min(255, int((v - 110) * 255 / 100)))
         alpha = keep_main_figure(alpha)
         alpha = alpha.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(1.1))
+        if face is not None:
+            # біля голови поля панами й козирки тонкі й напівпрозорі для моделі — тут поріг м'якший
+            soft = raw.point(lambda v: 0 if v < 35 else min(255, int((v - 35) * 255 / 110)))
+            box = (max(0, int((fx - 1.1 * fw) * scale)), max(0, int((fy - 1.1 * fh) * scale)),
+                   min(size[0], int((fx + 2.1 * fw) * scale)), min(size[1], int((fy + 0.9 * fh) * scale)))
+            if box[2] > box[0] and box[3] > box[1]:
+                zone = Image.new("L", size, 0)
+                ImageDraw.Draw(zone).rectangle(box, fill=255)
+                zone = zone.filter(ImageFilter.GaussianBlur(fw * scale * 0.15))
+                alpha = ImageChops.lighter(alpha, ImageChops.multiply(soft.filter(ImageFilter.GaussianBlur(1.0)), zone))
         # людина не заходить на колонку тексту: зсуваємо праворуч (обличчя лишається в кадрі)
         bbox = alpha.point(lambda v: 255 if v > 40 else 0).getbbox()
         if bbox and ox + bbox[0] < 545:
