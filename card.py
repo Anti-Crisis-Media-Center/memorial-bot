@@ -275,6 +275,10 @@ def cut_person(photo: Image.Image, contour=None):
         main = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
         keep = cv2.dilate((labels == main).astype("uint8"),
                           cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kk * 2 + 1, kk * 2 + 1)))
+        if face is not None:           # поля панами, вуха, козирок — тонкі, але їх не відрізаємо
+            fx, fy, fw, fh = face
+            keep[max(0, int(fy - 1.1 * fh)):int(fy + 0.9 * fh),
+                 max(0, int(fx - 0.7 * fw)):int(fx + 1.7 * fw)] = 1
         a = a * keep
     # наскільки моделі згодні щодо силуету
     am, bm = a > 128, b > 128
