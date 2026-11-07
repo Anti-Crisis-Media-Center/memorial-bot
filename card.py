@@ -260,7 +260,7 @@ def cut_person(photo: Image.Image, contour=None):
         fx, fy, fw, fh = face
         hh, ww = a.shape
         foreign[max(0, int(fy - 1.1 * fh)):min(hh, int(fy + 0.9 * fh)),
-                max(0, int(fx - 0.7 * fw)):min(ww, int(fx + 1.7 * fw))] = 0
+                max(0, int(fx - 1.1 * fw)):min(ww, int(fx + 2.1 * fw))] = 0
     k = max(5, int(min(a.shape) * 0.035)) | 1
     foreign = cv2.morphologyEx(foreign, cv2.MORPH_OPEN, np.ones((k, k), "uint8"))
     foreign = cv2.dilate(foreign, np.ones((7, 7), "uint8"))
@@ -278,7 +278,7 @@ def cut_person(photo: Image.Image, contour=None):
         if face is not None:           # поля панами, вуха, козирок — тонкі, але їх не відрізаємо
             fx, fy, fw, fh = face
             keep[max(0, int(fy - 1.1 * fh)):int(fy + 0.9 * fh),
-                 max(0, int(fx - 0.7 * fw)):int(fx + 1.7 * fw)] = 1
+                 max(0, int(fx - 1.1 * fw)):int(fx + 2.1 * fw)] = 1
         a = a * keep
     # наскільки моделі згодні щодо силуету
     am, bm = a > 128, b > 128
