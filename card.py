@@ -348,6 +348,30 @@ def background(category: str):
     return Image.composite(lifted, bg, dark.filter(ImageFilter.GaussianBlur(1)))
 
 
+
+def decontaminate_edge(duo, alpha):
+    """Прибирає світлий ореол: на краю вирізу пікселі ще містять колір старого тла фото.
+    У смузі біля контуру замінюємо колір на колір сусідніх внутрішніх пікселів людини."""
+    import numpy as np
+    core = alpha.point(lambda v: 255 if v > 220 else 0).filter(ImageFilter.MinFilter(9))
+    c = np.asarray(core, dtype=np.float32) / 255.0
+    img = np.asarray(duo, dtype=np.float32)
+    acc = np.zeros_like(img)
+    wsum = np.zeros_like(c)
+    for r in (4, 10, 22):                      # дедалі ширше — щоб дотягнутись до краю
+        cb = np.asarray(core.filter(ImageFilter.GaussianBlur(r)), dtype=np.float32) / 255.0
+        pb = np.stack([np.asarray(Image.fromarray((img[..., i] * c).astype(np.uint8)).filter(
+            ImageFilter.GaussianBlur(r)), dtype=np.float32) / 255.0 for i in range(3)], -1) * 255.0
+        take = (wsum < 0.5) & (cb > 0.02)
+        acc[take] = pb[take] / cb[take][:, None]
+        wsum[take] = 1.0
+    inside = np.where(wsum[..., None] > 0, acc, img * 0.6)
+    band = 1.0 - np.asarray(core.filter(ImageFilter.GaussianBlur(2)), dtype=np.float32) / 255.0
+    band = band[..., None]
+    out = img * (1 - band) + np.minimum(inside, img) * band   # лише темніше, ніколи не світліше
+    return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8))
+
+
 def make_card(photo: Image.Image, *, category, name, subtitle, city, years, credit=True, nocut=False,
               contour=None) -> bytes:
     accent = ACCENT.get(category, ACCENT["civilians"])
@@ -400,7 +424,8 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         alpha = alpha.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(1.1))
         if face is not None:
             # біля голови поля панами й козирки тонкі й напівпрозорі для моделі — тут поріг м'якший
-            soft = raw.point(lambda v: 0 if v < 35 else min(255, int((v - 35) * 255 / 110)))
+            soft = raw.point(lambda v: 0 if v < 70 else min(255, int((v - 70) * 255 / 110)))
+            soft = soft.filter(ImageFilter.MinFilter(3))
             box = (max(0, int((fx - 1.1 * fw) * scale)), max(0, int((fy - 1.1 * fh) * scale)),
                    min(size[0], int((fx + 2.1 * fw) * scale)), min(size[1], int((fy + 0.9 * fh) * scale)))
             if box[2] > box[0] and box[3] > box[1]:
@@ -460,6 +485,8 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     else:
         alpha = fade_mask(size, left=0.35, top=0.25, right=0.06, bottom=0.18)
 
+    if on_paper:
+        duo = decontaminate_edge(duo, alpha)
     layer = Image.new("RGB", (W, H))
     mask = Image.new("L", (W, H), 0)
     layer.paste(duo, (ox, oy))
