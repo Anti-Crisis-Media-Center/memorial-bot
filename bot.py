@@ -259,12 +259,18 @@ def offer_contour(person):
                 keyboard=contour_keyboard(person))
 
 
+TEST_GROUP_ID = "-1003946430136"  # «Тестування ботів АКМЦ» (супергрупа з гілками)
+TEST_THREAD = "6"                  # гілка «Тести»
+
+
 def tg_send(chat_id, text, card_bytes, silent=True, token=None, keyboard=None):
     """Картка + текст. Підпис до фото в Telegram — до 1024 символів;
     довший текст іде окремим повідомленням одразу під карткою.
     keyboard — кнопки під останнім повідомленням (для чернеток)."""
     token = token or env("TELEGRAM_BOT_TOKEN")
     data = {"chat_id": chat_id, "disable_notification": str(silent).lower()}
+    if str(chat_id) == TEST_GROUP_ID:
+        data["message_thread_id"] = TEST_THREAD
     if keyboard and len(text) <= 1024:
         data["reply_markup"] = json.dumps(keyboard)
     long_text = len(text) > 1024
@@ -272,10 +278,22 @@ def tg_send(chat_id, text, card_bytes, silent=True, token=None, keyboard=None):
         data.update(caption=text, parse_mode="HTML")
     r = requests.post(f"https://api.telegram.org/bot{token}/sendPhoto", data=data,
                       files={"photo": ("card.jpg", card_bytes, "image/jpeg")}, timeout=120).json()
+    new_id = (r.get("parameters") or {}).get("migrate_to_chat_id")
+    if not r.get("ok") and new_id:
+        # Групу перетворили на супергрупу (з гілками) — шлемо за новою адресою, у гілку «Тести»
+        print(f"Чат {chat_id} став супергрупою {new_id}; оновіть змінну CHANNEL_ID")
+        chat_id = new_id
+        data["chat_id"] = new_id
+        if str(new_id) == TEST_GROUP_ID:
+            data["message_thread_id"] = TEST_THREAD
+        r = requests.post(f"https://api.telegram.org/bot{token}/sendPhoto", data=data,
+                          files={"photo": ("card.jpg", card_bytes, "image/jpeg")}, timeout=120).json()
     if not r.get("ok"):
         raise RuntimeError(f"Telegram sendPhoto: {r}")
     if long_text:
         extra = {"reply_markup": keyboard} if keyboard else {}
+        if str(chat_id) == TEST_GROUP_ID:
+            extra["message_thread_id"] = TEST_THREAD
         tg("sendMessage", _token=token, chat_id=chat_id, text=text, parse_mode="HTML",
            disable_notification=silent, link_preview_options={"is_disabled": True}, **extra)
     return r["result"]
