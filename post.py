@@ -86,8 +86,56 @@ def partner_line(person, html_mode, network):
     return f"Платформа пам'яті {name} спільно з {PARTNER_NAME} вшановує пам'ять {whom}."
 
 
+TG_LIMIT = 4000   # Telegram приймає до 4096 видимих символів у повідомленні; лишаємо запас
+
+
+def _visible_len(text):
+    return len(html.unescape(re.sub(r"<[^>]+>", "", text)))
+
+
+def _trim_story(story, limit):
+    """Скорочує історію до limit символів по межі речення, додає «…»."""
+    out, used = [], 0
+    for p in story:
+        if used + len(p) <= limit:
+            out.append(p)
+            used += len(p) + 2
+            continue
+        room = limit - used
+        sentences = re.split(r"(?<=[.!?…])\s+", p)
+        part = ""
+        for snt in sentences:
+            if len(part) + len(snt) + 1 > room:
+                break
+            part = (part + " " + snt).strip()
+        if part:
+            out.append(part + " …")
+        elif out:
+            out[-1] = out[-1] + " …"
+        break
+    return out
+
+
 def build_post(person, region, html_mode=True, network="telegram"):
-    """Повертає текст поста. html_mode=True — розмітка для Telegram, False — простий текст (Facebook)."""
+    """Повертає текст поста. html_mode=True — розмітка для Telegram, False — простий текст (Facebook).
+    Задовгу для Telegram історію скорочує по реченню (повна — за посиланням «читати на сайті»)."""
+    text = _build_post(person, region, html_mode, network)
+    if network == "telegram" and _visible_len(text) > TG_LIMIT:
+        full = person.story
+        over = _visible_len(text) - TG_LIMIT
+        budget = max(300, sum(len(p) + 2 for p in full) - over - 20)
+        while True:
+            person.story = _trim_story(full, budget)
+            text = _build_post(person, region, html_mode, network)
+            if _visible_len(text) <= TG_LIMIT or budget <= 300:
+                break
+            budget -= 200
+        person.story = full
+        text = text.replace("читати на сайті</a>", "читати повністю на сайті</a>")
+    return text
+
+
+def _build_post(person, region, html_mode=True, network="telegram"):
     esc = (lambda s: html.escape(s, quote=False)) if html_mode else (lambda s: s)
     female = is_female(person)
     died_word = "загинула" if female else "загинув"
