@@ -228,7 +228,40 @@ def cut_with_contour(rgb: Image.Image, contour):
     return out
 
 
-def cut_person(photo: Image.Image, contour=None):
+def apply_erase(cut, erase):
+    """Гумка редакторки: мазки пальцем {"r": радіус, "s": [[[x, y], ...], ...]} (0..999 від розміру фото)
+    — усе під ними прозоре."""
+    if cut is None or not erase or not erase.get("s"):
+        return cut
+    w, h = cut.size
+    r = max(2, int(erase.get("r", 40) * w / 999))
+    m = Image.new("L", (w, h), 0)
+    d = ImageDraw.Draw(m)
+    for stroke in erase["s"]:
+        pts = [(x * (w - 1) / 999, y * (h - 1) / 999) for x, y in stroke]
+        if len(pts) > 1:
+            d.line(pts, fill=255, width=2 * r, joint="curve")
+        for x, y in pts:
+            d.ellipse((x - r, y - r, x + r, y + r), fill=255)
+    m = m.filter(ImageFilter.GaussianBlur(2))
+    cut = cut.copy()
+    cut.putalpha(ImageChops.subtract(cut.getchannel("A"), m))
+    return cut
+
+
+def cut_person(photo: Image.Image, contour=None, erase=None):
+    """Вирізання + гумка редакторки. Якщо є мазки гумки, а автоматичне вирізання не вдалося,
+    беремо сирий результат birefnet — редакторка сама прибрала зайве."""
+    cut = _cut_person(photo, contour)
+    if erase and erase.get("s"):
+        if cut is None and _SESSION is not None:
+            from rembg import remove
+            cut = remove(photo.convert("RGB"), session=_SESSION[0])
+        cut = apply_erase(cut, erase)
+    return cut
+
+
+def _cut_person(photo: Image.Image, contour=None):
     """Вирізає людину з фото (прибирає тло).
 
     Контур веде birefnet-portrait з обробкою країв (alpha matting) — так акуратніше волосся.
@@ -383,7 +416,7 @@ def decontaminate_edge(duo, alpha):
 
 
 def make_card(photo: Image.Image, *, category, name, subtitle, city, years, credit=True, nocut=False,
-              contour=None) -> bytes:
+              contour=None, erase=None) -> bytes:
     accent = ACCENT.get(category, ACCENT["civilians"])
     card = background(category)
 
@@ -419,7 +452,7 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     size = (max(1, int(photo.width * scale)), max(1, int(photo.height * scale)))
     duo = duo.resize(size, Image.LANCZOS).filter(ImageFilter.UnsharpMask(radius=2, percent=60, threshold=2))
 
-    cut = None if nocut else cut_person(photo, contour)       # nocut — редакторка попросила фото без вирізання
+    cut = None if nocut else cut_person(photo, contour, erase)       # nocut — редакторка попросила фото без вирізання
     on_paper = cut is not None and BACKGROUNDS.get(category)
     if on_paper:
         # на підкладці з папером людина вирізана чітко по контуру, без розчинення країв;
@@ -461,6 +494,11 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
             if face is not None:                # вухо не далі ніж на 40 px від краю картки
                 ox_edge = min(ox_edge, int(W - 34 - (fx + fw * 1.12) * scale))
             ox = max(ox, ox_edge)
+        # людина зрізана знизу вище за край фото (стіл, контур редакторки) — опускаємо, щоб
+        # нижній край вирізу ліг на низ картки: людина стоїть, а не висить у повітрі
+        rows = alpha.point(lambda v: 255 if v > 60 else 0).getbbox()
+        if rows and rows[3] < size[1] - 4 and oy + rows[3] < H:
+            oy += min(H - (oy + rows[3]), int(0.3 * H))      # не більше 30% — обличчя лишається вгорі
         right_in = ox + size[0] < W - 2
         # спершу чіткий контур, а розчиняється лише вузька смужка (~35 px) біля краю фото
         edge = 35 / size[0]
@@ -616,7 +654,7 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
     return out.getvalue()
 
 
-def card_for_person(person, city: str, nocut: bool = False, contour=None) -> bytes:
+def card_for_person(person, city: str, nocut: bool = False, contour=None, erase=None) -> bytes:
     from memorial import parse_date
     raw = requests.get(person.photo, timeout=60).content
     photo = Image.open(io.BytesIO(raw))
@@ -628,4 +666,4 @@ def card_for_person(person, city: str, nocut: bool = False, contour=None) -> byt
     dd = parse_date(person.f("Дата загибелі"))
     years = f"{b[0]} — {dd[0]}" if b and dd else ""
     return make_card(photo, category=person.cat, name=person.name, subtitle=subtitle,
-                     city=city, years=years, nocut=nocut, contour=contour)
+                     city=city, years=years, nocut=nocut, contour=contour, erase=erase)

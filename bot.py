@@ -238,8 +238,9 @@ def tg(method, _token=None, **params):
     return data["result"]
 
 
-def make_card(person, region, nocut=False, contour=None):
-    return card.card_for_person(person, city_line_city(person, region), nocut=nocut, contour=contour)
+def make_card(person, region, nocut=False, contour=None, erase=None):
+    return card.card_for_person(person, city_line_city(person, region), nocut=nocut, contour=contour,
+                                erase=erase)
 
 
 CONTOUR_PAGE = "https://anti-crisis-media-center.github.io/memorial-bot/contour.html"
@@ -254,8 +255,9 @@ def contour_keyboard(person):
 
 
 def offer_contour(person):
-    review_send("Якщо людину вирізано погано — натисни ✏️ «Обвести контур» під полем повідомлення "
-                "і обведи її пальцем. Бот перемалює картку за твоїм контуром.",
+    review_send("Якщо людину вирізано погано — натисни ✏️ «Обвести контур» під полем повідомлення. "
+                "Там можна обвести людину пальцем, а якщо лишилось щось зайве (чуже плече, предмет) — "
+                "перемкнись на 🧽 «Стерти зайве» і просто зафарбуй цей шматок.",
                 keyboard=contour_keyboard(person))
 
 
@@ -422,6 +424,7 @@ def edit(action):
     if action == "nocut":
         pending["nocut"] = True
         pending.pop("contour", None)
+        pending.pop("erase", None)
         save(PENDING_FILE, pending)
         review_send(build_post(person, pending["region"]),
                     make_card(person, pending["region"], nocut=True))
@@ -446,13 +449,22 @@ def contour_received(data):
         review_send("Цей контур — для попередньої чернетки. Обведи людину з поточної.")
         offer_contour(person)
         return
-    review_send("✏️ Дякую! Перемальовую картку за твоїм контуром…", keyboard={"remove_keyboard": True})
-    pending["contour"] = data["p"]
+    if data.get("p"):                       # новий контур — попередні мазки гумки вже не потрібні
+        pending["contour"] = data["p"]
+        pending.pop("erase", None)
+    if data.get("e") and data["e"].get("s"):  # гумка додається до попередніх мазків
+        er = pending.get("erase") or {"r": data["e"].get("r", 40), "s": []}
+        er["s"] = er["s"] + data["e"]["s"]
+        er["r"] = data["e"].get("r", er["r"])
+        pending["erase"] = er
+    what = "контуром" if data.get("p") and not data.get("e") else "твоїми правками"
+    review_send(f"✏️ Дякую! Перемальовую картку за {what}…", keyboard={"remove_keyboard": True})
     pending["nocut"] = False
     save(PENDING_FILE, pending)
     review_send(build_post(person, pending["region"]),
-                make_card(person, pending["region"], contour=data["p"]))
-    review_send("👆 Картка за твоїм контуром. Вийде о 9:00, якщо нічого не зміниш.", keyboard=DRAFT_KEYBOARD)
+                make_card(person, pending["region"], contour=pending.get("contour"), erase=pending.get("erase")))
+    review_send("👆 Нова картка. Вийде о 9:00, якщо нічого не зміниш. "
+                "Лишилось зайве — 🧽 «Стерти зайве» ще раз.", keyboard=DRAFT_KEYBOARD)
     offer_contour(person)
 
 
@@ -516,7 +528,7 @@ def publish(pending):
     to_channel = env("PUBLISH_TO_CHANNEL", "false").lower() == "true"
     target = env("CHANNEL_ID") if to_channel else env("REVIEW_CHAT_ID")
     card_bytes = make_card(person, region, nocut=pending.get("nocut", False),
-                           contour=pending.get("contour"))
+                           contour=pending.get("contour"), erase=pending.get("erase"))
     # публікує «меморіальний» бот; якщо його ще не додали в чат — старий бот
     try:
         tg_send(target, build_post(person, region), card_bytes, silent=True, token=review_token())

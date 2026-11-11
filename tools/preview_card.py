@@ -28,6 +28,9 @@ for arg in sys.argv[1:]:                      # ID або ID@файл_фону (
 for pid, bg in jobs:
     bg, _, cfile = bg.partition("%")
     contour = json.load(open(cfile)) if cfile else None
+    erase = None
+    if isinstance(contour, dict):              # {"p": контур, "e": гумка}
+        contour, erase = contour.get("p"), contour.get("e")
     if bg:
         os.environ["CIVIL_BG"] = bg
     else:
@@ -39,7 +42,7 @@ for pid, bg in jobs:
     p = memorial.parse_person(memorial.fetch(people[pid]["url"]), people[pid]["url"], people[pid]["cat"])
     region = "luhansk" if "Луган" in json.dumps(people[pid], ensure_ascii=False) else "donetsk"
     try:
-        tiles.append(Image.open(io.BytesIO(bot.make_card(p, region, contour=contour))).resize((720, 720)))
+        tiles.append(Image.open(io.BytesIO(bot.make_card(p, region, contour=contour, erase=erase))).resize((720, 720)))
         log.append(f"{pid}: {time.time() - t0:.0f} s")
     except TimeoutError:
         log.append(f"{pid}: TIMEOUT")

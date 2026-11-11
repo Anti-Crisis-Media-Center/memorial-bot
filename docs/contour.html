@@ -5,50 +5,87 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
  html,body{margin:0;background:#1c1b1a;color:#eee;font:15px -apple-system,Roboto,sans-serif;overscroll-behavior:none}
- p{margin:10px 14px}
+ p{margin:8px 14px;min-height:60px}
  #wrap{position:relative;margin:0 auto;touch-action:none}
  #wrap img,#wrap canvas{position:absolute;left:0;top:0;width:100%;height:100%}
- .bar{display:flex;gap:10px;padding:12px 14px}
- button{flex:1;padding:14px;border:0;border-radius:10px;font-size:16px;font-weight:600}
- #clear{background:#3c3c3c;color:#eee} #done{background:#FFCC33;color:#222}
+ .bar{display:flex;gap:10px;padding:10px 14px}
+ button{flex:1;padding:13px;border:0;border-radius:10px;font-size:16px;font-weight:600;background:#3c3c3c;color:#eee}
+ .mode button.on{background:#ff7a33;color:#fff}
+ #done{background:#FFCC33;color:#222}
 </style></head><body>
-<p>Обведи людину пальцем одним рухом — разом із головним убором, руками й одягом, які мають лишитися. Веди якомога ближче до краю людини: що за лінією — зникне, а сам край підправить нейромережа.</p>
+<div class="bar mode"><button id="mDraw" class="on">✏️ Обвести</button><button id="mErase">🧽 Стерти зайве</button></div>
+<p id="hint"></p>
 <div id="wrap"><img id="img" crossorigin="anonymous"><canvas id="cv"></canvas></div>
 <div class="bar"><button id="clear">Очистити</button><button id="done">Готово</button></div>
 <script>
 const tg = window.Telegram && Telegram.WebApp; if (tg) { tg.ready(); tg.expand(); }
 const q = new URLSearchParams(location.search);
 const img = document.getElementById('img'), cv = document.getElementById('cv'), wrap = document.getElementById('wrap');
-const ctx = cv.getContext('2d'); let pts = [], drawing = false;
+const hint = document.getElementById('hint');
+const ctx = cv.getContext('2d');
+const R = 0.04;                       // радіус гумки — 4% ширини фото
+let mode = 'draw', pts = [], strokes = [], cur = null, drawing = false;
+const HINTS = {
+  draw: 'Обведи людину пальцем одним рухом — разом із головним убором, руками й одягом. Точність не потрібна: край підправить нейромережа.',
+  erase: 'Зафарбуй пальцем те, що треба прибрати: чуже плече, голову за спиною, предмет. Можна кількома мазками. Обводити людину не обовʼязково.'
+};
+function setMode(m) { mode = m; hint.textContent = HINTS[m];
+  document.getElementById('mDraw').classList.toggle('on', m === 'draw');
+  document.getElementById('mErase').classList.toggle('on', m === 'erase'); }
+document.getElementById('mDraw').onclick = () => setMode('draw');
+document.getElementById('mErase').onclick = () => setMode('erase');
+setMode('draw');
 img.onload = () => {
-  const maxW = Math.min(window.innerWidth, 600), maxH = window.innerHeight - 190;
+  const maxW = Math.min(window.innerWidth, 600), maxH = window.innerHeight - 230;
   let w = maxW, h = w * img.naturalHeight / img.naturalWidth;
   if (h > maxH) { h = maxH; w = h * img.naturalWidth / img.naturalHeight; }
   wrap.style.width = w + 'px'; wrap.style.height = h + 'px';
-  cv.width = w * 2; cv.height = h * 2;
+  cv.width = w * 2; cv.height = h * 2; redraw();
 };
 img.src = q.get('img');
 function pos(e) { const r = cv.getBoundingClientRect(), t = e.touches ? e.touches[0] : e;
   return [(t.clientX - r.left) / r.width, (t.clientY - r.top) / r.height]; }
-function redraw(closed) {
-  ctx.clearRect(0, 0, cv.width, cv.height); if (pts.length < 2) return;
-  ctx.beginPath(); ctx.moveTo(pts[0][0] * cv.width, pts[0][1] * cv.height);
-  for (const p of pts) ctx.lineTo(p[0] * cv.width, p[1] * cv.height);
-  if (closed) { ctx.closePath(); ctx.fillStyle = 'rgba(255,204,51,0.25)'; ctx.fill(); }
-  ctx.strokeStyle = '#ff7a33'; ctx.lineWidth = 6; ctx.lineJoin = 'round'; ctx.stroke();
+function redraw() {
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  // мазки гумки — напівпрозорим червоним
+  ctx.strokeStyle = 'rgba(230,40,40,0.55)'; ctx.fillStyle = 'rgba(230,40,40,0.55)';
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = 2 * R * cv.width;
+  for (const s of strokes.concat(cur ? [cur] : [])) {
+    ctx.beginPath(); ctx.moveTo(s[0][0] * cv.width, s[0][1] * cv.height);
+    for (const p of s) ctx.lineTo(p[0] * cv.width, p[1] * cv.height);
+    if (s.length === 1) ctx.lineTo(s[0][0] * cv.width + 0.1, s[0][1] * cv.height);
+    ctx.stroke();
+  }
+  // контур
+  if (pts.length > 1) {
+    ctx.beginPath(); ctx.moveTo(pts[0][0] * cv.width, pts[0][1] * cv.height);
+    for (const p of pts) ctx.lineTo(p[0] * cv.width, p[1] * cv.height);
+    if (!(drawing && mode === 'draw')) { ctx.closePath(); ctx.fillStyle = 'rgba(255,204,51,0.22)'; ctx.fill(); }
+    ctx.strokeStyle = '#ff7a33'; ctx.lineWidth = 6; ctx.stroke();
+  }
 }
-function start(e) { e.preventDefault(); drawing = true; pts = [pos(e)]; redraw(); }
-function move(e) { if (!drawing) return; e.preventDefault(); const p = pos(e), l = pts[pts.length - 1];
-  if (Math.hypot(p[0] - l[0], p[1] - l[1]) > 0.006) { pts.push(p); redraw(); } }
-function end() { if (!drawing) return; drawing = false; redraw(true); }
+function start(e) { e.preventDefault(); drawing = true;
+  if (mode === 'draw') pts = [pos(e)]; else cur = [pos(e)]; redraw(); }
+function move(e) { if (!drawing) return; e.preventDefault(); const p = pos(e);
+  const arr = mode === 'draw' ? pts : cur, l = arr[arr.length - 1];
+  if (Math.hypot(p[0] - l[0], p[1] - l[1]) > (mode === 'draw' ? 0.006 : 0.012)) { arr.push(p); redraw(); } }
+function end() { if (!drawing) return; drawing = false;
+  if (mode === 'erase' && cur) { strokes.push(cur); cur = null; } redraw(); }
 cv.addEventListener('touchstart', start, {passive: false}); cv.addEventListener('touchmove', move, {passive: false});
 cv.addEventListener('touchend', end); cv.addEventListener('mousedown', start);
 cv.addEventListener('mousemove', move); window.addEventListener('mouseup', end);
-document.getElementById('clear').onclick = () => { pts = []; redraw(); };
+document.getElementById('clear').onclick = () => { if (mode === 'draw') pts = []; else strokes = []; redraw(); };
+const r9 = ([x, y]) => [Math.round(x * 999), Math.round(y * 999)];
 document.getElementById('done').onclick = () => {
-  if (pts.length < 8) { (tg ? tg.showAlert : alert)('Спершу обведи людину.'); return; }
-  let p = pts; const step = Math.ceil(p.length / 180); p = p.filter((_, i) => i % step === 0);
-  const data = JSON.stringify({id: q.get('id'), p: p.map(([x, y]) => [Math.round(x * 999), Math.round(y * 999)])});
-  if (tg && tg.sendData) tg.sendData(data); else alert(data);
+  const hasP = pts.length >= 8, hasE = strokes.length > 0;
+  if (!hasP && !hasE) { (tg ? tg.showAlert : alert)('Обведи людину або зафарбуй зайве.'); return; }
+  const data = {id: q.get('id')};
+  if (hasP) { const step = Math.ceil(pts.length / 160); data.p = pts.filter((_, i) => i % step === 0).map(r9); }
+  if (hasE) {                                   // Telegram приймає до 4 КБ — проріджуємо мазки
+    const total = strokes.reduce((n, s) => n + s.length, 0), step = Math.max(1, Math.ceil(total / 140));
+    data.e = {r: Math.round(R * 999), s: strokes.map(s => s.filter((_, i) => i % step === 0 || i === s.length - 1).map(r9))};
+  }
+  const json = JSON.stringify(data);
+  if (tg && tg.sendData) tg.sendData(json); else alert(json);
 };
 </script></body></html>
