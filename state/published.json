@@ -453,9 +453,19 @@
    "date": "2026-11-10",
    "url": "https://memorial.ua/obituaries/militaries/hetchykov-viktor-9934",
    "channel": "-5294316060"
+  },
+  {
+   "id": "3337",
+   "name": "Нонна Перекупка",
+   "cat": "civilians",
+   "region": "donetsk",
+   "date": "2026-11-11",
+   "url": "https://memorial.ua/obituaries/civilians/perekupka-nonna-3337",
+   "channel": "-5294316060"
   }
  ],
  "postponed": {
-  "10701": "2026-11-05"
+  "10701": "2026-11-05",
+  "5181": "2026-11-11"
  }
 }
