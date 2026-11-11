@@ -273,6 +273,26 @@ def cut_person(photo: Image.Image, contour=None, erase=None):
     return cut
 
 
+def fill_torso(a, face):
+    """Під обличчям, у смузі тулуба, тла бути не може: світлий одяг на світлому тлі модель інколи
+    «простріляє» діркою (Хетчиков, 10.11). У кожному рядку від підборіддя донизу заповнюємо
+    проміжок між крайніми точками силуету в межах тулуба. Простір між рукою й боком лежить
+    ширше за цю смугу, його не чіпаємо."""
+    import numpy as np
+    fx, fy, fw, fh = face
+    h, w = a.shape
+    cx = fx + fw / 2
+    x0, x1 = max(0, int(cx - 1.1 * fw)), min(w, int(cx + 1.1 * fw))
+    if x1 - x0 < 10:
+        return a
+    a = a.copy()
+    for y in range(min(h, int(fy + 1.15 * fh)), h):
+        idx = np.flatnonzero(a[y, x0:x1] > 128)
+        if idx.size and idx[-1] - idx[0] > 0.6 * (x1 - x0):
+            a[y, x0 + idx[0]:x0 + idx[-1] + 1] = 255
+    return a
+
+
 def _cut_person(photo: Image.Image, contour=None):
     """Вирізає людину з фото (прибирає тло).
 
@@ -342,6 +362,8 @@ def _cut_person(photo: Image.Image, contour=None):
     if iou < 0.80:
         print(f"cut_person: моделі не згодні (IoU {iou:.2f}) — фото без вирізання")
         return None
+    if face is not None:
+        a = fill_torso(a, face)
     out.putalpha(Image.fromarray(a.clip(0, 255).astype("uint8")))
     return out
 
