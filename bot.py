@@ -620,6 +620,27 @@ def auto():
     sync_state(push=True, msg=f"Опубліковано {today}")
 
 
+def link_preview_demo(pid="9934"):
+    """Тест вигляду: текст поста + картка як велике прев'ю над текстом (один допис). Лише редакторці."""
+    import subprocess
+    entry = load(INDEX_FILE, {})["people"][pid]
+    person = memorial.get_person(entry["url"], entry["cat"])
+    region = entry["regions"][0]
+    os.makedirs("previews", exist_ok=True)
+    name = f"previews/linkpreview_{pid}_{int(time.time())}.jpg"
+    open(name, "wb").write(make_card(person, region))
+    subprocess.run(["git", "add", name], check=True)
+    subprocess.run(["git", "-c", "user.name=memorial-bot", "-c", "user.email=memorial-bot@users.noreply.github.com",
+                    "commit", "-qm", f"Прев'ю-тест {pid}"], check=True)
+    subprocess.run(["git", "pull", "-q", "--rebase"], check=True)
+    subprocess.run(["git", "push", "-q"], check=True)
+    url = f"https://raw.githubusercontent.com/{os.environ.get('GITHUB_REPOSITORY', 'Anti-Crisis-Media-Center/memorial-bot')}/main/{name}"
+    time.sleep(20)
+    review_send("👇 Тест: варіант «картка як прев'ю над текстом» — один допис. Лише для перегляду.")
+    tg("sendMessage", _token=review_token(), chat_id=env("REVIEW_CHAT_ID"), text=build_post(person, region),
+       parse_mode="HTML", link_preview_options={"url": url, "prefer_large_media": True, "show_above_text": True})
+
+
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "auto"
     if mode == "index":
@@ -642,6 +663,8 @@ def main():
                         keyboard={"remove_keyboard": True})
     elif mode in ("replace", "nocut", "skip"):
         edit(mode)
+    elif mode == "linkpreview":
+        link_preview_demo()
     else:
         print(__doc__)
 

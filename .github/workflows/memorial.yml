@@ -11,7 +11,7 @@ on:
       mode:
         description: "replace — інша людина; nocut — фото без вирізання; skip — не публікувати сьогодні; test — чернетка тобі; now — опублікувати зараз; auto — звичайний режим; index — оновити список"
         type: choice
-        options: [replace, nocut, skip, test, buttons, now, auto, index]
+        options: [replace, nocut, skip, test, buttons, now, auto, index, linkpreview]
         default: test
       category:
         description: "Для тесту: кого взяти (auto — за графіком)"
