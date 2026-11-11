@@ -453,7 +453,7 @@ def contour_received(data):
         pending["contour"] = data["p"]
         pending.pop("erase", None)
     if data.get("e") and data["e"].get("s"):  # гумка додається до попередніх мазків
-        er = pending.get("erase") or {"r": data["e"].get("r", 40), "s": []}
+        er = pending.get("erase") or {"r": data["e"].get("r", 18), "s": []}
         er["s"] = er["s"] + data["e"]["s"]
         er["r"] = data["e"].get("r", er["r"])
         pending["erase"] = er

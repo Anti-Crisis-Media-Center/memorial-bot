@@ -234,7 +234,7 @@ def apply_erase(cut, erase):
     if cut is None or not erase or not erase.get("s"):
         return cut
     w, h = cut.size
-    r = max(2, int(erase.get("r", 40) * w / 999))
+    r = max(2, int(erase.get("r", 18) * w / 999))
     m = Image.new("L", (w, h), 0)
     d = ImageDraw.Draw(m)
     for stroke in erase["s"]:
@@ -257,7 +257,19 @@ def cut_person(photo: Image.Image, contour=None, erase=None):
         if cut is None and _SESSION is not None:
             from rembg import remove
             cut = remove(photo.convert("RGB"), session=_SESSION[0])
+        before = cut
         cut = apply_erase(cut, erase)
+        # обличчя гумка не чіпає: мазок упритул до щоки не «відкусить» пів голови
+        face = find_face(photo) if cut is not None else None
+        if face is not None:
+            fx, fy, fw, fh = face
+            sx, sy = cut.width / photo.width, cut.height / photo.height
+            guard = Image.new("L", cut.size, 0)
+            ImageDraw.Draw(guard).ellipse(((fx + fw * 0.06) * sx, (fy - fh * 0.25) * sy,
+                                           (fx + fw * 0.94) * sx, (fy + fh * 1.0) * sy), fill=255)
+            guard = guard.filter(ImageFilter.GaussianBlur(3))
+            a = Image.composite(before.getchannel("A"), cut.getchannel("A"), guard)
+            cut.putalpha(a)
     return cut
 
 

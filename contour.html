@@ -23,7 +23,7 @@ const q = new URLSearchParams(location.search);
 const img = document.getElementById('img'), cv = document.getElementById('cv'), wrap = document.getElementById('wrap');
 const hint = document.getElementById('hint');
 const ctx = cv.getContext('2d');
-const R = 0.04;                       // радіус гумки — 4% ширини фото
+const R = 0.018;                      // радіус гумки — ~2% ширини фото (тонкий, як палець)
 let mode = 'draw', pts = [], strokes = [], cur = null, drawing = false;
 const HINTS = {
   draw: 'Обведи людину пальцем одним рухом — разом із головним убором, руками й одягом. Точність не потрібна: край підправить нейромережа.',
