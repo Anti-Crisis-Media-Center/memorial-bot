@@ -244,12 +244,14 @@ def make_card(person, region, nocut=False, contour=None, erase=None):
 
 
 CONTOUR_PAGE = "https://anti-crisis-media-center.github.io/memorial-bot/contour.html"
+CONTOUR_VERSION = "2"   # збільшувати після кожної зміни contour.html
 
 
 def contour_keyboard(person):
     """Кнопка під полем вводу: відкриває сторінку, де редакторка обводить людину пальцем."""
     from urllib.parse import urlencode
-    url = CONTOUR_PAGE + "?" + urlencode({"img": person.photo, "id": person.id})
+    # v — щоб Telegram не показував стару збережену версію сторінки після оновлень
+    url = CONTOUR_PAGE + "?" + urlencode({"img": person.photo, "id": person.id, "v": CONTOUR_VERSION})
     return {"keyboard": [[{"text": "✏️ Обвести контур", "web_app": {"url": url}}]],
             "resize_keyboard": True, "is_persistent": True}
 
