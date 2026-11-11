@@ -191,7 +191,7 @@ def plain_background(rgb: Image.Image) -> bool:
 
 def cut_with_contour(rgb: Image.Image, contour):
     """Вирізання з підказкою редакторки: контур (точки 0..999 від розміру фото) задає, де людина.
-    Усе поза контуром — тло; всередині край визначають нейромережі, дірки в силуеті заповнюються."""
+    Контур головний: за ним — тло, глибоко всередині — людина; край уточнює birefnet."""
     import cv2
     import numpy as np
     from rembg import remove
@@ -199,14 +199,24 @@ def cut_with_contour(rgb: Image.Image, contour):
     poly = np.array([[x * (w - 1) / 999, y * (h - 1) / 999] for x, y in contour], dtype=np.int32)
     inside = np.zeros((h, w), np.uint8)
     cv2.fillPoly(inside, [poly], 255)
-    band = max(5, int(min(w, h) * 0.035))
-    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (band * 2 + 1, band * 2 + 1))
-    outer = cv2.dilate(inside, k)                 # трохи ширше за лінію — запас на неточність пальця
+    # Контур редакторки — головний: усе далі ніж ~1.5% за її лінію відрізається, навіть якщо
+    # нейромережа бачить там людину (сусіди за столом, чужі плечі). Глибоко всередині контуру —
+    # завжди людина (світлий одяг на світлому тлі не «простріляє» діркою). Лише у вузькій смузі
+    # вздовж лінії край уточнює birefnet.
+    def morph(img, r, grow):
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (r * 2 + 1, r * 2 + 1))
+        return cv2.dilate(img, k) if grow else cv2.erode(img, k)
+    outer = morph(inside, max(3, int(min(w, h) * 0.015)), True)
+    core = morph(inside, max(5, int(min(w, h) * 0.03)), False)
     out = remove(rgb, session=_SESSION[0])
     a = np.array(out.getchannel("A")).astype("float32")
-    b = np.array(remove(rgb, session=_SESSION[-1]).getchannel("A")).astype("float32")
-    a = np.maximum(a, b)                           # усе, що хоч одна модель вважає людиною…
-    a = np.minimum(a, outer.astype("float32"))     # …але лише всередині контуру
+    a = np.minimum(a, outer.astype("float32"))
+    a = np.maximum(a, cv2.GaussianBlur(core, (0, 0), 3).astype("float32"))
+    # лишаємо тільки шматок, з'єднаний з головною фігурою (найбільший)
+    n, lab, st, _ = cv2.connectedComponentsWithStats((a > 128).astype(np.uint8))
+    if n > 2:
+        main = 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))
+        a[(lab != main) & (lab != 0)] = 0
     # дірки всередині силуету (пропущена панама, тінь на одязі) заповнюємо
     fig = (a > 128).astype(np.uint8)
     flood = fig.copy()

@@ -20,9 +20,14 @@ card.upscale = timed("upscale", card.upscale)
 card.cut_person = timed("cut_person", card.cut_person)
 jobs = []
 for arg in sys.argv[1:]:                      # ID або ID@файл_фону (варіант синього для цивільних)
+    arg, _, cfile = arg.partition("%")       # ID%файл_контуру.json — прев'ю з контуром редакторки
     pid, _, bg = arg.partition("@")
+    if cfile:
+        bg = bg + "%" + cfile
     jobs.append((pid, bg))
 for pid, bg in jobs:
+    bg, _, cfile = bg.partition("%")
+    contour = json.load(open(cfile)) if cfile else None
     if bg:
         os.environ["CIVIL_BG"] = bg
     else:
@@ -34,7 +39,7 @@ for pid, bg in jobs:
     p = memorial.parse_person(memorial.fetch(people[pid]["url"]), people[pid]["url"], people[pid]["cat"])
     region = "luhansk" if "Луган" in json.dumps(people[pid], ensure_ascii=False) else "donetsk"
     try:
-        tiles.append(Image.open(io.BytesIO(bot.make_card(p, region))).resize((720, 720)))
+        tiles.append(Image.open(io.BytesIO(bot.make_card(p, region, contour=contour))).resize((720, 720)))
         log.append(f"{pid}: {time.time() - t0:.0f} s")
     except TimeoutError:
         log.append(f"{pid}: TIMEOUT")
