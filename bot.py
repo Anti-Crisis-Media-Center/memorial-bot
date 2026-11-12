@@ -267,6 +267,46 @@ TEST_GROUP_ID = "-1003946430136"  # «Тестування ботів АКМЦ»
 TEST_THREAD = "6"                  # гілка «Тести»
 
 
+CARDS_BRANCH = "cards"     # службова гілка з картками для прев'ю; тримаємо лише останні 60 днів
+CARDS_KEEP_DAYS = 60
+
+
+def host_card(card_bytes):
+    """Кладе картку в службову гілку і повертає публічну адресу (для прев'ю над текстом).
+    Гілка щоразу перезаписується одним комітом без історії, тож репозиторій не росте:
+    старі картки (понад 60 днів) просто випадають. Журнал опублікованих (state/) це не зачіпає.
+    Повертає None, якщо не вдалося — тоді бот шле по-старому: картка й текст окремо."""
+    import secrets, tempfile
+    def git(*a, inp=None):
+        r = subprocess.run(["git", *a], input=inp, capture_output=True, text=True)
+        if r.returncode:
+            raise RuntimeError(f"git {a[0]}: {r.stderr.strip()[:300]}")
+        return r.stdout.strip()
+    try:
+        now = datetime.now(KYIV)
+        name = f"{now:%Y%m%d-%H%M%S}-{secrets.token_hex(3)}.jpg"
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+            f.write(card_bytes)
+        blob = git("hash-object", "-w", f.name)
+        entries = []
+        if subprocess.run(["git", "fetch", "-q", "origin", CARDS_BRANCH], capture_output=True).returncode == 0:
+            cutoff = (now - timedelta(days=CARDS_KEEP_DAYS)).strftime("%Y%m%d")
+            for line in git("ls-tree", "FETCH_HEAD").splitlines():
+                if line.split("\t", 1)[-1][:8] >= cutoff:
+                    entries.append(line)
+        entries.append(f"100644 blob {blob}\t{name}")
+        tree = git("mktree", inp="\n".join(entries) + "\n")
+        commit = git("-c", "user.name=memorial-bot", "-c", "user.email=memorial-bot@users.noreply.github.com",
+                     "commit-tree", tree, "-m", f"Картки для прев'ю (останні {CARDS_KEEP_DAYS} днів)")
+        git("push", "-q", "-f", "origin", f"{commit}:refs/heads/{CARDS_BRANCH}")
+        repo = os.environ.get("GITHUB_REPOSITORY", "Anti-Crisis-Media-Center/memorial-bot")
+        time.sleep(3)
+        return f"https://raw.githubusercontent.com/{repo}/{CARDS_BRANCH}/{name}"
+    except Exception as e:
+        log("Не вдалося викласти картку для прев'ю:", e)
+        return None
+
+
 def tg_send(chat_id, text, card_bytes, silent=True, token=None, keyboard=None):
     """Картка + текст. Підпис до фото в Telegram — до 1024 символів;
     довший текст іде окремим повідомленням одразу під карткою.
@@ -278,6 +318,21 @@ def tg_send(chat_id, text, card_bytes, silent=True, token=None, keyboard=None):
     if keyboard and len(text) <= 1024:
         data["reply_markup"] = json.dumps(keyboard)
     long_text = len(text) > 1024
+    if long_text:
+        # Довгий текст: один допис — картка великим прев'ю над текстом (до 4096 символів)
+        url = host_card(card_bytes)
+        if url:
+            extra = {"reply_markup": keyboard} if keyboard else {}
+            if str(chat_id) == TEST_GROUP_ID:
+                extra["message_thread_id"] = TEST_THREAD
+            try:
+                return tg("sendMessage", _token=token, chat_id=chat_id, text=text, parse_mode="HTML",
+                          disable_notification=silent, **extra,
+                          link_preview_options={"url": url, "prefer_large_media": True, "show_above_text": True})
+            except RuntimeError as e:
+                if "chat not found" in str(e) or "Forbidden" in str(e) or "not enough rights" in str(e):
+                    raise
+                log("Прев'ю не вийшло, шлю картку й текст окремо:", e)
     if not long_text:
         data.update(caption=text, parse_mode="HTML")
     r = requests.post(f"https://api.telegram.org/bot{token}/sendPhoto", data=data,
@@ -533,12 +588,13 @@ def publish(pending):
                            contour=pending.get("contour"), erase=pending.get("erase"))
     # публікує «меморіальний» бот; якщо його ще не додали в чат — старий бот
     try:
-        tg_send(target, build_post(person, region), card_bytes, silent=True, token=review_token())
+        # зі звуком: о 9:00 сповіщення нагадує зупинитися на хвилину мовчання
+        tg_send(target, build_post(person, region), card_bytes, silent=False, token=review_token())
     except RuntimeError as e:
         if env("MEMORIAL_BOT_TOKEN") and ("chat not found" in str(e) or "Forbidden" in str(e)
                                           or "not enough rights" in str(e)):
             log("Новий бот не має доступу до чату — публікує старий:", e)
-            tg_send(target, build_post(person, region), card_bytes, silent=True)
+            tg_send(target, build_post(person, region), card_bytes, silent=False)
         else:
             raise
     log("Telegram: опубліковано в", "канал" if to_channel else "чат перевірки (тестовий режим)")
@@ -621,24 +677,12 @@ def auto():
 
 
 def link_preview_demo(pid="9934"):
-    """Тест вигляду: текст поста + картка як велике прев'ю над текстом (один допис). Лише редакторці."""
-    import subprocess
+    """Перевірка формату «картка-прев'ю + текст» на довгій історії. Лише редакторці."""
     entry = load(INDEX_FILE, {})["people"][pid]
     person = memorial.get_person(entry["url"], entry["cat"])
     region = entry["regions"][0]
-    os.makedirs("previews", exist_ok=True)
-    name = f"previews/linkpreview_{pid}_{int(time.time())}.jpg"
-    open(name, "wb").write(make_card(person, region))
-    subprocess.run(["git", "add", name], check=True)
-    subprocess.run(["git", "-c", "user.name=memorial-bot", "-c", "user.email=memorial-bot@users.noreply.github.com",
-                    "commit", "-qm", f"Прев'ю-тест {pid}"], check=True)
-    subprocess.run(["git", "pull", "-q", "--rebase"], check=True)
-    subprocess.run(["git", "push", "-q"], check=True)
-    url = f"https://raw.githubusercontent.com/{os.environ.get('GITHUB_REPOSITORY', 'Anti-Crisis-Media-Center/memorial-bot')}/main/{name}"
-    time.sleep(20)
-    review_send("👇 Тест: варіант «картка як прев'ю над текстом» — один допис. Лише для перегляду.")
-    tg("sendMessage", _token=review_token(), chat_id=env("REVIEW_CHAT_ID"), text=build_post(person, region),
-       parse_mode="HTML", link_preview_options={"url": url, "prefer_large_media": True, "show_above_text": True})
+    review_send("👇 Перевірка нового формату (так виглядатиме допис у каналі). Кнопки тут не діють.")
+    review_send(build_post(person, region), make_card(person, region))
 
 
 def main():
