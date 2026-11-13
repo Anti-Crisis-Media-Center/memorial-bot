@@ -516,8 +516,18 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
             face_x = ox + (fx + fw / 2) * scale if face is not None else ox + size[0] / 2
             ox += int(max(0, min(545 - (ox + bbox[0]), W - 260 - face_x)))
         # голова (з вухами) не виходить за білу рамку праворуч
+        # Праву межу голови беремо з самого вирізу (рядки від маківки до підборіддя), а не з рамки
+        # обличчя: в обличчя, повернутого вбік (Степаненко, 13.11), вухо й потилиця далеко праворуч.
+        head_r = None
         if face is not None:
-            head_right = ox + (fx + fw * 1.12) * scale
+            head_r = (fx + fw * 1.12) * scale
+            y0, y1 = max(0, int((fy - 0.9 * fh) * scale)), min(size[1], int((fy + 0.85 * fh) * scale))
+            x1 = min(size[0], int((fx + fw * 2.4) * scale))
+            if y1 > y0 and x1 > 0:
+                hb = alpha.crop((0, y0, x1, y1)).point(lambda v: 255 if v > 60 else 0).getbbox()
+                if hb:
+                    head_r = max(head_r, hb[2])
+            head_right = ox + head_r
             if head_right > W - 34:
                 ox -= int(head_right - (W - 34))
         # тіло обрізане правим краєм фото → ставимо цей зріз упритик до правого краю картки
@@ -526,7 +536,7 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         if a_np[1] > 60:
             ox_edge = W - size[0]
             if face is not None:                # вухо не далі ніж на 40 px від краю картки
-                ox_edge = min(ox_edge, int(W - 34 - (fx + fw * 1.12) * scale))
+                ox_edge = min(ox_edge, int(W - 34 - head_r))
             ox = max(ox, ox_edge)
         # людина зрізана знизу вище за край фото (стіл, контур редакторки) — опускаємо, щоб
         # нижній край вирізу ліг на низ картки: людина стоїть, а не висить у повітрі
