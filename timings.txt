@@ -1,0 +1,20 @@
+13188 start
+  upscale: 9.8 s
+  cut_person: 73.0 s
+13188: 86 s
+9934 start
+  upscale: 7.6 s
+  cut_person: 20.7 s
+9934: 31 s
+10702 start
+  upscale: 7.2 s
+  cut_person: 14.9 s
+10702: 25 s
+9828 start
+  upscale: 7.8 s
+  cut_person: 11.9 s
+9828: 23 s
+9860 start
+  upscale: 4.5 s
+  cut_person: 13.8 s
+9860: 22 s
