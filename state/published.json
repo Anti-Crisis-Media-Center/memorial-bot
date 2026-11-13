@@ -471,10 +471,21 @@
    "date": "2026-11-12",
    "url": "https://memorial.ua/obituaries/civilians/dubnianskyi-vitalii-5294",
    "channel": "-5294316060"
+  },
+  {
+   "id": "7743",
+   "name": "Артем Нетруненко",
+   "cat": "militaries",
+   "region": "luhansk",
+   "date": "2026-11-13",
+   "url": "https://memorial.ua/obituaries/militaries/netrunenko-artem-7743",
+   "channel": "-5294316060"
   }
  ],
  "postponed": {
   "10701": "2026-11-05",
-  "5181": "2026-11-11"
+  "5181": "2026-11-11",
+  "13188": "2026-11-13",
+  "7779": "2026-11-13"
  }
 }
