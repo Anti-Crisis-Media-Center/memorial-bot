@@ -498,12 +498,22 @@
    "date": "2026-11-15",
    "url": "https://memorial.ua/obituaries/civilians/cherepnia-tetiana-3212",
    "channel": "-5294316060"
+  },
+  {
+   "id": "5292",
+   "name": "Олександр Камлук",
+   "cat": "civilians",
+   "region": "donetsk",
+   "date": "2026-11-16",
+   "url": "https://memorial.ua/obituaries/civilians/kamluk-oleksandr-5292",
+   "channel": "-5294316060"
   }
  ],
  "postponed": {
   "10701": "2026-11-05",
   "5181": "2026-11-11",
   "13188": "2026-11-13",
-  "7779": "2026-11-13"
+  "7779": "2026-11-13",
+  "8184": "2026-11-16"
  }
 }
