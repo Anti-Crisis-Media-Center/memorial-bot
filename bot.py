@@ -265,6 +265,7 @@ def offer_contour(person):
 
 TEST_GROUP_ID = "-1003946430136"  # «Тестування ботів АКМЦ» (супергрупа з гілками)
 TEST_THREAD = "6"                  # гілка «Тести»
+MIGRATED_CHATS = {"-5294316060": TEST_GROUP_ID}   # «Тестування бота-новинаря» → супергрупа (листопад 2026)
 
 
 CARDS_BRANCH = "cards"     # службова гілка з картками для прев'ю; тримаємо лише останні 60 днів
@@ -312,6 +313,8 @@ def tg_send(chat_id, text, card_bytes, silent=True, token=None, keyboard=None):
     довший текст іде окремим повідомленням одразу під карткою.
     keyboard — кнопки під останнім повідомленням (для чернеток)."""
     token = token or env("TELEGRAM_BOT_TOKEN")
+    # стара тестова група стала супергрупою з гілками — шлемо одразу за новою адресою, у гілку «Тести»
+    chat_id = MIGRATED_CHATS.get(str(chat_id), chat_id)
     data = {"chat_id": chat_id, "disable_notification": str(silent).lower()}
     if str(chat_id) == TEST_GROUP_ID:
         data["message_thread_id"] = TEST_THREAD
