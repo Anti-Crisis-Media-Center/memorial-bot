@@ -688,6 +688,23 @@ def link_preview_demo(pid="9934"):
     review_send(build_post(person, region), make_card(person, region))
 
 
+def check_channel():
+    """Перевіряє, чи може Меморіал-бот публікувати в CHANNEL_ID; звіт — редакторці."""
+    ch = env("CHANNEL_ID")
+    tok = review_token()
+    me = tg("getMe", _token=tok)
+    try:
+        info = tg("getChat", _token=tok, chat_id=ch)
+        m = tg("getChatMember", _token=tok, chat_id=ch, user_id=me["id"])
+        ok = m.get("status") == "administrator" and m.get("can_post_messages")
+        msg = (f"Канал «{info.get('title')}» ({ch}): бот @{me.get('username')} — {m.get('status')}, "
+               f"публікувати: {'так' if m.get('can_post_messages') else 'ні'}, "
+               f"видаляти: {'так' if m.get('can_delete_messages') else 'ні'}.")
+        review_send(("✅ " if ok else "⚠️ ") + msg)
+    except RuntimeError as e:
+        review_send(f"⚠️ Не вдалося перевірити канал {ch}: {e}")
+
+
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "auto"
     if mode == "index":
@@ -710,6 +727,8 @@ def main():
                         keyboard={"remove_keyboard": True})
     elif mode in ("replace", "nocut", "skip"):
         edit(mode)
+    elif mode == "checkchannel":
+        check_channel()
     elif mode == "linkpreview":
         link_preview_demo()
     else:

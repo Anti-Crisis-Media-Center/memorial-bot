@@ -11,7 +11,7 @@ on:
       mode:
         description: "replace — інша людина; nocut — фото без вирізання; skip — не публікувати сьогодні; test — чернетка тобі; now — опублікувати зараз; auto — звичайний режим; index — оновити список"
         type: choice
-        options: [replace, nocut, skip, test, buttons, now, auto, index, linkpreview]
+        options: [replace, nocut, skip, test, buttons, now, auto, index, linkpreview, checkchannel]
         default: test
       category:
         description: "Для тесту: кого взяти (auto — за графіком)"
@@ -53,7 +53,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           MEMORIAL_BOT_TOKEN: ${{ secrets.MEMORIAL_BOT_TOKEN }}
           REVIEW_CHAT_ID: ${{ secrets.REVIEW_CHAT_ID }}
-          CHANNEL_ID: ${{ vars.CHANNEL_ID }}
+          CHANNEL_ID: "@acmc_ua"   # офіційний канал АКМЦ (меморандум з «Меморіалом» підписано 15.11.2026)
           PUBLISH_TO_CHANNEL: ${{ vars.PUBLISH_TO_CHANNEL }}
           FB_PAGE_ID: ${{ vars.FB_PAGE_ID }}
           FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
