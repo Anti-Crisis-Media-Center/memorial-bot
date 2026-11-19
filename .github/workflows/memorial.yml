@@ -53,8 +53,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           MEMORIAL_BOT_TOKEN: ${{ secrets.MEMORIAL_BOT_TOKEN }}
           REVIEW_CHAT_ID: ${{ secrets.REVIEW_CHAT_ID }}
-          # Офіційний канал "@acmc_ua" — після погодження дизайну «Меморіалом» (рішення Юлі 17.11: чекаємо їхньої відповіді)
-          CHANNEL_ID: "-5294316060"   # тестовий чат (бот сам перенаправляє в супергрупу, гілка «Тести»)
+          CHANNEL_ID: "@acmc_ua"   # офіційний канал АКМЦ: меморандум підписано 15.11, дизайн погоджено «Меморіалом» 18.11.2026
           PUBLISH_TO_CHANNEL: ${{ vars.PUBLISH_TO_CHANNEL }}
           FB_PAGE_ID: ${{ vars.FB_PAGE_ID }}
           FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
