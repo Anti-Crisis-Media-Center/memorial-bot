@@ -534,6 +534,15 @@
    "date": "2026-11-19",
    "url": "https://memorial.ua/obituaries/militaries/stekfanovych-hennadii-2828",
    "channel": "-5294316060"
+  },
+  {
+   "id": "3646",
+   "name": "Віктор Ярко",
+   "cat": "civilians",
+   "region": "luhansk",
+   "date": "2026-11-20",
+   "url": "https://memorial.ua/obituaries/civilians/iarko-viktor-3646",
+   "channel": "@acmc_ua"
   }
  ],
  "postponed": {
@@ -543,6 +552,7 @@
   "7779": "2026-11-13",
   "8184": "2026-11-16",
   "10993": "2026-11-17",
-  "9827": "2026-11-17"
+  "9827": "2026-11-17",
+  "4877": "2026-11-20"
  }
 }
