@@ -110,3 +110,18 @@ def test_story_cut_at_asterisks():
             '<p>Ще приписка.</p></div></div></html>')
     p = parse_person(html, "https://memorial.ua/obituaries/militaries/test-1", "militaries")
     assert p.story == ["Перший абзац.", "Другий абзац."]
+
+
+def test_gender_by_name_not_relatives():
+    """20.11: історію розповідала невістка («у її свекра…») — бот написав «загинула» про Віктора."""
+    from post import is_female
+    class P:
+        desc = "72-річний шахтар на пенсії помер"
+        occupation = "пенсіонер"
+        story = ["Невістка розповідає, що у її свекра були поранення. Дружина залишилася, її мати жива."]
+        name = "Віктор Ярко"
+    assert not is_female(P)
+    for n, f in [("Микола Зіньков", False), ("Ілля Б", False), ("Олена К", True),
+                 ("Любов С", True), ("Харченко Ольга", True), ("Анна Ф", True)]:
+        P.name = n
+        assert is_female(P) == f, n

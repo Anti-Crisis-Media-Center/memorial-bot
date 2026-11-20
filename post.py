@@ -28,16 +28,32 @@ def age_words(n: int) -> str:
     return f"{n} років"
 
 
+MALE_NAMES_A = ("Микола", "Нікола", "Микита", "Ілля", "Кузьма", "Сава", "Хома", "Лука", "Фома", "Ярема", "Данила",
+                "Гаврила", "Савва")
+FEMALE_NAMES_CONS = ("Любов", "Нінель", "Руфь", "Юдіф", "Есфір", "Агнес", "Ассоль")
+
+
 def is_female(person) -> bool:
-    text = " ".join([person.desc] + person.story[:3]).lower()
-    fem = len(re.findall(r"\b(загинула|народилася|народилась|була|працювала|навчалася|"
-                         r"мешкала|жила|їй|її|захисниця|військовослужбовиця)\b", text))
-    mas = len(re.findall(r"\b(загинув|народився|був|працював|навчався|мешкав|жив|йому|"
-                         r"захисник|військовослужбовець)\b", text))
-    if fem != mas:
-        return fem > mas
-    first = person.name.split()[0] if person.name else ""
-    return first.endswith(("а", "я")) and first not in ("Микита", "Ілля", "Кузьма", "Сава")
+    """Стать — насамперед за ім'ям і заняттям загиблої людини.
+    Текст історії лише як запасний варіант: у ньому часто говорять родичі
+    («невістка розповідає, що у її свекра…») — і жіночі слова стосуються не загиблого (20.11, Віктор Ярко)."""
+    words = person.name.split() if person.name else []
+    first = words[0] if words else ""
+    if len(words) > 1 and re.search(r"(енко|ук|юк|ський|цький|ич)$", first):
+        first = words[1]                 # на сайті трапляється «Прізвище Ім'я»
+    if first in MALE_NAMES_A:
+        return False
+    if first in FEMALE_NAMES_CONS:
+        return True
+    if first:
+        return first.endswith(("а", "я"))
+    occ = (getattr(person, "occupation", "") or "").lower()
+    if re.search(r"(ка|иця|ня)\b", occ):
+        return True
+    text = person.desc.lower()           # опис — про саму людину, без переказів родичів
+    fem = len(re.findall(r"\b(загинула|померла|народилася|народилась|була|працювала|мешкала|жила)\b", text))
+    mas = len(re.findall(r"\b(загинув|помер|народився|був|працював|мешкав|жив)\b", text))
+    return fem > mas
 
 
 def human_date(text: str) -> str:

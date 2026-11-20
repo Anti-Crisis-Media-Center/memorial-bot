@@ -329,6 +329,9 @@ def tg_send(chat_id, text, card_bytes, silent=True, token=None, keyboard=None):
             if str(chat_id) == TEST_GROUP_ID:
                 extra["message_thread_id"] = TEST_THREAD
             try:
+                # Невидиме посилання на картку — першим у тексті. Без нього при ручному редагуванні
+                # допису в Telegram картка зникала: застосунок бере прев'ю з першого посилання в тексті (20.11).
+                text = f'<a href="{url}">\u2060</a>' + text
                 return tg("sendMessage", _token=token, chat_id=chat_id, text=text, parse_mode="HTML",
                           disable_notification=silent, **extra,
                           link_preview_options={"url": url, "prefer_large_media": True, "show_above_text": True})
@@ -375,13 +378,37 @@ PICK_KEYBOARD = {"inline_keyboard": [
 ] + DRAFT_KEYBOARD["inline_keyboard"]}
 
 
+KEYBOARD_MSGS = []   # повідомлення з кнопками за цей запуск — після публікації кнопки прибираємо
+
+
 def review_send(text, card_bytes=None, keyboard=None):
     """Повідомлення редакторці від «меморіального» бота."""
     if card_bytes is not None:
-        return tg_send(env("REVIEW_CHAT_ID"), text, card_bytes, silent=False,
-                       token=review_token(), keyboard=keyboard)
-    extra = {"reply_markup": keyboard} if keyboard else {}
-    return tg("sendMessage", _token=review_token(), chat_id=env("REVIEW_CHAT_ID"), text=text, **extra)
+        r = tg_send(env("REVIEW_CHAT_ID"), text, card_bytes, silent=False,
+                    token=review_token(), keyboard=keyboard)
+    else:
+        extra = {"reply_markup": keyboard} if keyboard else {}
+        r = tg("sendMessage", _token=review_token(), chat_id=env("REVIEW_CHAT_ID"), text=text, **extra)
+    if keyboard and isinstance(r, dict) and r.get("message_id") and "inline_keyboard" in keyboard:
+        KEYBOARD_MSGS.append(r["message_id"])
+    return r
+
+
+def close_buttons(note):
+    """Після публікації чи скасування: прибирає кнопки з чернеток і пише, що вже вирішено,
+    щоб натискання після 9:00 не лишалися без відповіді (20.11)."""
+    for mid in KEYBOARD_MSGS:
+        try:
+            tg("editMessageReplyMarkup", _token=review_token(), chat_id=env("REVIEW_CHAT_ID"),
+               message_id=mid, reply_markup={"inline_keyboard": []})
+        except Exception as e:
+            log("Не вдалося прибрати кнопки:", e)
+    KEYBOARD_MSGS.clear()
+    try:
+        tg("sendMessage", _token=review_token(), chat_id=env("REVIEW_CHAT_ID"), text=note,
+           reply_markup={"remove_keyboard": True})
+    except Exception as e:
+        log("Повідомлення про завершення:", e)
 
 
 # ---------- Facebook ----------
@@ -469,12 +496,12 @@ def edit(action):
     if action == "skip":
         pending["published"] = "cancelled"
         save(PENDING_FILE, pending)
-        review_send("⛔ Добре, сьогодні «Хвилину мовчання» не публікуємо.")
+        close_buttons("⛔ Добре, сьогодні «Хвилину мовчання» не публікуємо.")
         return True
     if action == "now":
         review_send("✅ Публікую зараз…")
         publish(pending)
-        review_send("✅ Опубліковано.")
+        close_buttons("✅ Опубліковано. Кнопки під чернеткою вже не діють.")
         return True
     if action in ("pick1", "pick2"):
         pending["nocut"] = action == "pick2"
@@ -677,6 +704,8 @@ def auto():
         return
     publish(pending)
     sync_state(push=True, msg=f"Опубліковано {today}")
+    close_buttons("✅ «Хвилина мовчання» вийшла о 9:00. Кнопки під чернеткою вже не діють.\n"
+                  "Якщо в дописі треба щось виправити — напиши Claude, бот відредагує допис, зберігши картку.")
 
 
 def link_preview_demo(pid="9934"):
@@ -686,6 +715,24 @@ def link_preview_demo(pid="9934"):
     region = entry["regions"][0]
     review_send("👇 Перевірка нового формату (так виглядатиме допис у каналі). Кнопки тут не діють.")
     review_send(build_post(person, region), make_card(person, region))
+
+
+def fix_post(message_id):
+    """Переписує вже опублікований у каналі сьогоднішній допис: свіжий текст (з виправленнями коду)
+    і картка-прев'ю над текстом. Для випадків, коли картка зникла після ручного редагування (20.11)."""
+    pending = load(PENDING_FILE, {})
+    person = memorial.Person(**pending["person"])
+    region = pending["region"]
+    card_bytes = make_card(person, region, nocut=pending.get("nocut", False),
+                           contour=pending.get("contour"), erase=pending.get("erase"))
+    url = host_card(card_bytes)
+    if not url:
+        raise RuntimeError("Не вдалося викласти картку")
+    text = f'<a href="{url}">\u2060</a>' + build_post(person, region)
+    tg("editMessageText", _token=review_token(), chat_id=env("CHANNEL_ID"), message_id=int(message_id),
+       text=text, parse_mode="HTML",
+       link_preview_options={"url": url, "prefer_large_media": True, "show_above_text": True})
+    log("Допис", message_id, "у каналі оновлено")
 
 
 def check_channel():
@@ -727,6 +774,8 @@ def main():
                         keyboard={"remove_keyboard": True})
     elif mode in ("replace", "nocut", "skip"):
         edit(mode)
+    elif mode == "fixpost":
+        fix_post(env("MESSAGE_ID"))
     elif mode == "checkchannel":
         check_channel()
     elif mode == "linkpreview":

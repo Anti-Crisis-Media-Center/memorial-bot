@@ -11,13 +11,17 @@ on:
       mode:
         description: "replace — інша людина; nocut — фото без вирізання; skip — не публікувати сьогодні; test — чернетка тобі; now — опублікувати зараз; auto — звичайний режим; index — оновити список"
         type: choice
-        options: [replace, nocut, skip, test, buttons, now, auto, index, linkpreview, checkchannel]
+        options: [replace, nocut, skip, test, buttons, now, auto, index, linkpreview, checkchannel, fixpost]
         default: test
       category:
         description: "Для тесту: кого взяти (auto — за графіком)"
         type: choice
         options: [auto, civilians, militaries, children]
         default: auto
+      message_id:
+        description: "Для fixpost: номер допису в каналі (останнє число в посиланні t.me/acmc_ua/…)"
+        type: string
+        default: ""
 
 concurrency:
   # правки чернетки (replace/nocut/skip) не чекають на ранковий запуск, що спить до 9:00
@@ -58,6 +62,7 @@ jobs:
           FB_PAGE_ID: ${{ vars.FB_PAGE_ID }}
           FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
           U2NET_HOME: /home/runner/.u2net
+          MESSAGE_ID: ${{ inputs.message_id }}
           FORCE_CATEGORY: ${{ inputs.category != 'auto' && inputs.category || '' }}
         run: python bot.py ${{ inputs.mode || 'auto' }}
 
