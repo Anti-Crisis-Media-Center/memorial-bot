@@ -521,7 +521,9 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         head_r = None
         if face is not None:
             head_r = (fx + fw * 1.12) * scale
-            y0, y1 = max(0, int((fy - 0.9 * fh) * scale)), min(size[1], int((fy + 0.85 * fh) * scale))
+            # лише рядки від маківки до рівня вух: нижче (біля підборіддя) уже комір і плече —
+            # вони не голова, і через них тіло не діставало до краю картки й розмивалося (Кузьменко, 21.11)
+            y0, y1 = max(0, int((fy - 0.9 * fh) * scale)), min(size[1], int((fy + 0.65 * fh) * scale))
             x1 = min(size[0], int((fx + fw * 2.4) * scale))
             if y1 > y0 and x1 > 0:
                 hb = alpha.crop((0, y0, x1, y1)).point(lambda v: 255 if v > 60 else 0).getbbox()
