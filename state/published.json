@@ -543,6 +543,15 @@
    "date": "2026-11-21",
    "url": "https://memorial.ua/obituaries/militaries/kuzmenko-kostiantyn-9451",
    "channel": "@acmc_ua"
+  },
+  {
+   "id": "7967",
+   "name": "Андрій Моргун",
+   "cat": "civilians",
+   "region": "donetsk",
+   "date": "2026-11-22",
+   "url": "https://memorial.ua/obituaries/civilians/morhun-andrii-7967",
+   "channel": "@acmc_ua"
   }
  ],
  "postponed": {
@@ -553,6 +562,7 @@
   "8184": "2026-11-16",
   "10993": "2026-11-17",
   "9827": "2026-11-17",
-  "4877": "2026-11-20"
+  "4877": "2026-11-20",
+  "12418": "2026-11-22"
  }
 }
