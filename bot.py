@@ -94,7 +94,7 @@ def crawl(category, index_seen, full, oblast_code=None, birth_city_id=None):
     return new_cards
 
 
-def update_index(full=False):
+def update_index(full=False, weekly=False):
     index = load(INDEX_FILE, {"seen": {}, "death": {}, "people": {}})
     if full:
         index = {"seen": {}, "death": {}, "people": {}}
@@ -112,9 +112,10 @@ def update_index(full=False):
         index["death"][reg] = sorted(ids)
 
     # хто народився в містах області (фільтр «Місто народження»).
-    # ~300 запитів, тому лише раз на тиждень (у неділю), при повному оновленні або якщо ще не робили
+    # ~700 запитів (~18 хв), тому лише в окремому недільному вечірньому запуску (birthscan),
+    # при повному оновленні або якщо ще не робили. Не перед чернеткою і не на «Інша людина» (22.11).
     index.setdefault("birth", {})
-    weekly = full or not index["birth"] or datetime.now(KYIV).weekday() == 6
+    weekly = weekly or full or not index["birth"]
     options = birth_city_options(fetch(list_url("militaries", 1))) if weekly else {}
     for reg, cities in (BIRTH_CITIES.items() if weekly else []):
         ids = set(index["birth"].get(reg, []))
@@ -756,6 +757,10 @@ def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "auto"
     if mode == "index":
         update_index(full="--full" in sys.argv)
+    elif mode == "birthscan":                # щонеділі о 20:00 — хто з загиблих народився в містах регіону
+        sync_state()
+        update_index(weekly=True)
+        sync_state(push=True, msg="Тижнева перевірка міст народження")
     elif mode == "test":
         prepare(datetime.now(KYIV).date(), dry_run=True)
     elif mode == "now":

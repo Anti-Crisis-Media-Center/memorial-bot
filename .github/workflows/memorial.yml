@@ -6,12 +6,13 @@ on:
     - cron: "15 4 * * *"   # підготовка чернетки (6:15 взимку / 7:15 влітку)
     - cron: "35 5 * * *"   # публікація о 9:00 влітку
     - cron: "35 6 * * *"   # публікація о 9:00 взимку
+    - cron: "0 18 * * 0"   # неділя, 20:00 взимку / 21:00 влітку — тижнева перевірка міст народження (~18 хв)
   workflow_dispatch:
     inputs:
       mode:
         description: "replace — інша людина; nocut — фото без вирізання; skip — не публікувати сьогодні; test — чернетка тобі; now — опублікувати зараз; auto — звичайний режим; index — оновити список"
         type: choice
-        options: [replace, nocut, skip, test, buttons, now, auto, index, linkpreview, checkchannel, fixpost]
+        options: [replace, nocut, skip, test, buttons, now, auto, index, birthscan, linkpreview, checkchannel, fixpost]
         default: test
       category:
         description: "Для тесту: кого взяти (auto — за графіком)"
@@ -64,7 +65,7 @@ jobs:
           U2NET_HOME: /home/runner/.u2net
           MESSAGE_ID: ${{ inputs.message_id }}
           FORCE_CATEGORY: ${{ inputs.category != 'auto' && inputs.category || '' }}
-        run: python bot.py ${{ inputs.mode || 'auto' }}
+        run: python bot.py ${{ github.event.schedule == '0 18 * * 0' && 'birthscan' || inputs.mode || 'auto' }}
 
       - name: Зберегти стан (хто вже був опублікований)
         if: always()
