@@ -470,6 +470,11 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         scale = max(scale, (1 - FACE_CY) * H / max(1, photo.height - fcy))
         paper = bool(BACKGROUNDS.get(category))
         scale = min(scale, (0.38 if paper else 0.32) * H / fh, 2.4 * H / photo.height)
+        # тісне фото: голова впирається в правий край знімка — людину трохи менше,
+        # щоб праворуч лишилося повітря (Світайло, 22.11)
+        tight = photo.width - (fx + fw) < 0.35 * fw
+        if tight:
+            scale *= 0.82
         ox = int(FACE_CX * W - (fx + fw / 2) * scale)
         oy = int(FACE_CY * H - (fy + fh / 2) * scale)
         # фото по плечі, яке не дістає до низу: опускаємо його (обличчя не нижче 60% висоти),
@@ -480,6 +485,7 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
             max_shift = int((0.74 if paper else 0.60) * H - (oy + fcy * scale))
             oy += max(0, min(int(target - bottom), max_shift))
     else:                                                  # обличчя не знайдено — як раніше
+        tight = False
         scale = 0.80 * H / photo.height
         ox = W - int(photo.width * scale * 0.90)
         oy = H - int(photo.height * scale)
@@ -540,6 +546,8 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
             if face is not None:                # вухо не далі ніж на 40 px від краю картки
                 ox_edge = min(ox_edge, int(W - 34 - head_r))
             ox = max(ox, ox_edge)
+        if face is not None and tight:          # тісне фото: край знімка не біля рамки, а з відступом
+            ox = min(ox, int(W - 34 - 0.09 * W - size[0]))
         # людина зрізана знизу вище за край фото (стіл, контур редакторки) — опускаємо, щоб
         # нижній край вирізу ліг на низ картки: людина стоїть, а не висить у повітрі
         rows = alpha.point(lambda v: 255 if v > 60 else 0).getbbox()
