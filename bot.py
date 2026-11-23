@@ -7,6 +7,7 @@
   python bot.py index    — оновити список людей (index)
   python bot.py index --full — повністю перебудувати список
 """
+import io
 import json
 import os
 import random
@@ -18,6 +19,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import requests
+from PIL import Image
 
 import card
 import memorial
@@ -432,6 +434,36 @@ def facebook_check():
     log("Ключ належить:", me.get("name"), me.get("id"))
 
 
+def facebook_mention_test():
+    """Прихований тест (published=false, читачі не бачать): чи стають відмітки сторінок «Меморіалу» клікабельними.
+    Після перевірки тестове фото видаляється."""
+    token, page = env("FACEBOOK_PAGE_TOKEN"), "414302258746592"      # жовта сторінка
+    G = "https://graph.facebook.com/v21.0"
+    ids = {}
+    for name in ("victims.of.russia", "memorialofheroes"):
+        r = requests.get(f"{G}/{name}", params={"fields": "id,name", "access_token": token}, timeout=60).json()
+        log("Сторінка", name, "→", r.get("id"), r.get("name"), (r.get("error") or {}).get("message", ""))
+        if r.get("id"):
+            ids[name] = r["id"]
+    pt = requests.get(f"{G}/{page}", params={"fields": "access_token", "access_token": token}, timeout=60).json()
+    ptoken = pt.get("access_token") or token
+    caption = "Тест відмітки (прихований, буде видалено). " + " ".join(
+        f"@[{i}]" for i in ids.values()) + " | текстом: @victims.of.russia @memorialofheroes"
+    img = Image.new("RGB", (400, 400), (40, 40, 40))
+    buf = io.BytesIO(); img.save(buf, "JPEG")
+    r = requests.post(f"{G}/{page}/photos", data={"caption": caption, "published": "false", "access_token": ptoken},
+                      files={"source": ("t.jpg", buf.getvalue(), "image/jpeg")}, timeout=120).json()
+    log("Публікація прихованого фото:", {k: v for k, v in r.items() if k != "access_token"})
+    pid = r.get("id")
+    if not pid:
+        return
+    info = requests.get(f"{G}/{pid}", params={"fields": "name,name_tags", "access_token": ptoken}, timeout=60).json()
+    log("Текст після публікації:", info.get("name"))
+    log("Розпізнані відмітки:", info.get("name_tags"), (info.get("error") or {}).get("message", ""))
+    d = requests.delete(f"{G}/{pid}", params={"access_token": ptoken}, timeout=60).json()
+    log("Тестове фото видалено:", d)
+
+
 def facebook_publish(person, region):
     page_id, token = env("FB_PAGE_ID"), env("FB_PAGE_TOKEN")
     if not (page_id and token):
@@ -801,6 +833,8 @@ def main():
         fix_post(env("MESSAGE_ID"))
     elif mode == "fbcheck":
         facebook_check()
+    elif mode == "fbmention":
+        facebook_mention_test()
     elif mode == "checkchannel":
         check_channel()
     elif mode == "linkpreview":
