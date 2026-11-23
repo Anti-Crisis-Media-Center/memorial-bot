@@ -275,7 +275,19 @@ CARDS_BRANCH = "cards"     # службова гілка з картками д�
 CARDS_KEEP_DAYS = 60
 
 
+_HOSTED = {}
+
+
 def host_card(card_bytes):
+    """Те саме, що _host_card, але одну й ту саму картку викладаємо лише раз (чернетка йде кільком людям)."""
+    import hashlib
+    key = hashlib.sha1(card_bytes).hexdigest()
+    if key not in _HOSTED:
+        _HOSTED[key] = _host_card(card_bytes)
+    return _HOSTED[key]
+
+
+def _host_card(card_bytes):
     """Кладе картку в службову гілку і повертає публічну адресу (для прев'ю над текстом).
     Гілка щоразу перезаписується одним комітом без історії, тож репозиторій не росте:
     старі картки (понад 60 днів) просто випадають. Журнал опублікованих (state/) це не зачіпає.
@@ -381,35 +393,55 @@ PICK_KEYBOARD = {"inline_keyboard": [
 ] + DRAFT_KEYBOARD["inline_keyboard"]}
 
 
-KEYBOARD_MSGS = []   # повідомлення з кнопками за цей запуск — після публікації кнопки прибираємо
+KEYBOARD_MSGS = []   # (чат, повідомлення) з кнопками за цей запуск — після публікації кнопки прибираємо
 
 
-def review_send(text, card_bytes=None, keyboard=None):
-    """Повідомлення редакторці від «меморіального» бота."""
-    if card_bytes is not None:
-        r = tg_send(env("REVIEW_CHAT_ID"), text, card_bytes, silent=False,
-                    token=review_token(), keyboard=keyboard)
-    else:
-        extra = {"reply_markup": keyboard} if keyboard else {}
-        r = tg("sendMessage", _token=review_token(), chat_id=env("REVIEW_CHAT_ID"), text=text, **extra)
-    if keyboard and isinstance(r, dict) and r.get("message_id") and "inline_keyboard" in keyboard:
-        KEYBOARD_MSGS.append(r["message_id"])
-    return r
+def reviewers():
+    """Хто перевіряє чернетки: Юля (REVIEW_CHAT_ID) + новинарі (EXTRA_REVIEWERS через кому).
+    Усі отримують однакові чернетки й можуть натискати кнопки (з 24.11)."""
+    ids = [str(env("REVIEW_CHAT_ID"))]
+    for x in (env("EXTRA_REVIEWERS") or "").replace(";", ",").split(","):
+        x = x.strip()
+        if x and x not in ids:
+            ids.append(x)
+    return ids
+
+
+def review_send(text, card_bytes=None, keyboard=None, exclude=None):
+    """Повідомлення всім, хто перевіряє чернетки (exclude — кому не слати)."""
+    first = None
+    for chat in reviewers():
+        if exclude and chat == str(exclude):
+            continue
+        try:
+            if card_bytes is not None:
+                r = tg_send(chat, text, card_bytes, silent=False, token=review_token(), keyboard=keyboard)
+            else:
+                extra = {"reply_markup": keyboard} if keyboard else {}
+                r = tg("sendMessage", _token=review_token(), chat_id=chat, text=text, **extra)
+        except Exception as e:
+            if chat == str(env("REVIEW_CHAT_ID")):
+                raise                               # Юлі — обов'язково; іншим — не зупиняємо роботу
+            log("Не вдалося надіслати", chat, ":", e)
+            continue
+        if keyboard and isinstance(r, dict) and r.get("message_id") and "inline_keyboard" in keyboard:
+            KEYBOARD_MSGS.append((chat, r["message_id"]))
+        first = first or r
+    return first
 
 
 def close_buttons(note):
     """Після публікації чи скасування: прибирає кнопки з чернеток і пише, що вже вирішено,
     щоб натискання після 9:00 не лишалися без відповіді (20.11)."""
-    for mid in KEYBOARD_MSGS:
+    for chat, mid in KEYBOARD_MSGS:
         try:
-            tg("editMessageReplyMarkup", _token=review_token(), chat_id=env("REVIEW_CHAT_ID"),
+            tg("editMessageReplyMarkup", _token=review_token(), chat_id=chat,
                message_id=mid, reply_markup={"inline_keyboard": []})
         except Exception as e:
             log("Не вдалося прибрати кнопки:", e)
     KEYBOARD_MSGS.clear()
     try:
-        tg("sendMessage", _token=review_token(), chat_id=env("REVIEW_CHAT_ID"), text=note,
-           reply_markup={"remove_keyboard": True})
+        review_send(note, keyboard={"remove_keyboard": True})
     except Exception as e:
         log("Повідомлення про завершення:", e)
 
@@ -606,10 +638,20 @@ def contour_received(data):
     offer_contour(person)
 
 
+ACTION_NAMES = {"replace": "🔄 «Інша людина»", "nocut": "🖼 «Без вирізання»", "skip": "⛔ «Не публікувати»",
+                "now": "✅ «Опублікувати зараз»", "pick1": "варіант 1", "pick2": "варіант 2"}
+
+
+def tell_others(who, what):
+    """Іншим перевіряльникам: хто що натиснув — щоб не робили те саме вдвох."""
+    name = (who.get("first_name") or "Хтось").strip()
+    review_send(f"👤 {name} натискає {what}.", exclude=who.get("id"))
+
+
 def listen(until: datetime):
     """Слухає кнопки під чернеткою до вказаного часу. True — сьогодні вже вирішено."""
     token = review_token()
-    me = str(env("REVIEW_CHAT_ID"))
+    allowed = set(reviewers())
     try:   # пропускаємо старі натискання
         old = tg("getUpdates", _token=token, offset=-1, timeout=0)
         offset = old[-1]["update_id"] + 1 if old else None
@@ -634,7 +676,9 @@ def listen(until: datetime):
         for u in updates:
             offset = u["update_id"] + 1
             m = u.get("message") or {}
-            if m.get("web_app_data") and str(m.get("from", {}).get("id")) == me:
+            if m.get("web_app_data") and str(m.get("from", {}).get("id")) in allowed:
+                if len(allowed) > 1:
+                    tell_others(m["from"], "✏️ «Обвести контур» / 🧽 «Стерти зайве»")
                 try:
                     contour_received(json.loads(m["web_app_data"]["data"]))
                 except Exception as e:
@@ -648,10 +692,12 @@ def listen(until: datetime):
                 tg("answerCallbackQuery", _token=token, callback_query_id=q["id"])
             except Exception:
                 pass
-            if str(q.get("from", {}).get("id")) != me:
+            if str(q.get("from", {}).get("id")) not in allowed:
                 continue
             action = q.get("data")
-            log("Кнопка:", action)
+            log("Кнопка:", action, "від", q["from"].get("first_name"))
+            if len(allowed) > 1:
+                tell_others(q["from"], ACTION_NAMES.get(action, action))
             try:
                 if edit(action):
                     return True
@@ -822,6 +868,7 @@ def main():
         update_index(weekly=True)
         sync_state(push=True, msg="Тижнева перевірка міст народження")
     elif mode == "test":
+        os.environ["EXTRA_REVIEWERS"] = ""        # тестова чернетка — лише Юлі, новинарів не турбуємо
         prepare(datetime.now(KYIV).date(), dry_run=True)
     elif mode == "now":
         # тест: обрати людину й одразу опублікувати в CHANNEL_ID, без очікування 9:00

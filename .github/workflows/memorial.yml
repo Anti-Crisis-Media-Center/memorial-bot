@@ -58,6 +58,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           MEMORIAL_BOT_TOKEN: ${{ secrets.MEMORIAL_BOT_TOKEN }}
           REVIEW_CHAT_ID: ${{ secrets.REVIEW_CHAT_ID }}
+          EXTRA_REVIEWERS: "595228832"   # Тетяна Андрєєва — отримує ті самі чернетки й кнопки (з 24.11.2026)
           CHANNEL_ID: "@acmc_ua"   # офіційний канал АКМЦ: меморандум підписано 15.11, дизайн погоджено «Меморіалом» 18.11.2026
           PUBLISH_TO_CHANNEL: ${{ vars.PUBLISH_TO_CHANNEL }}
           FB_PAGE_ID: ${{ vars.FB_PAGE_ID }}
