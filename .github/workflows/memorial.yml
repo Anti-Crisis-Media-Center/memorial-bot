@@ -12,7 +12,7 @@ on:
       mode:
         description: "replace — інша людина; nocut — фото без вирізання; skip — не публікувати сьогодні; test — чернетка тобі; now — опублікувати зараз; auto — звичайний режим; index — оновити список"
         type: choice
-        options: [replace, nocut, skip, test, buttons, now, auto, index, birthscan, linkpreview, checkchannel, fixpost]
+        options: [replace, nocut, skip, test, buttons, now, auto, index, birthscan, linkpreview, checkchannel, fixpost, fbcheck]
         default: test
       category:
         description: "Для тесту: кого взяти (auto — за графіком)"
@@ -62,6 +62,7 @@ jobs:
           PUBLISH_TO_CHANNEL: ${{ vars.PUBLISH_TO_CHANNEL }}
           FB_PAGE_ID: ${{ vars.FB_PAGE_ID }}
           FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
+          FACEBOOK_PAGE_TOKEN: ${{ secrets.FACEBOOK_PAGE_TOKEN }}   # ключ системного користувача Meta (як у DeepState), 19.11
           U2NET_HOME: /home/runner/.u2net
           MESSAGE_ID: ${{ inputs.message_id }}
           FORCE_CATEGORY: ${{ inputs.category != 'auto' && inputs.category || '' }}

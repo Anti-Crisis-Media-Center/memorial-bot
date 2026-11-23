@@ -414,6 +414,24 @@ def close_buttons(note):
 
 # ---------- Facebook ----------
 
+def facebook_check():
+    """Перевірка без публікації: до яких сторінок має доступ ключ і що на них дозволено (ключ не друкуємо)."""
+    token = env("FACEBOOK_PAGE_TOKEN")
+    if not token:
+        log("FACEBOOK_PAGE_TOKEN не задано")
+        return
+    r = requests.get("https://graph.facebook.com/v21.0/me/accounts",
+                     params={"fields": "id,name,tasks", "access_token": token}, timeout=60).json()
+    if "error" in r:
+        log("Facebook помилка:", r["error"].get("message"))
+        return
+    for p in r.get("data", []):
+        log(f"Сторінка {p.get('name')} ({p.get('id')}): {', '.join(p.get('tasks', []))}")
+    me = requests.get("https://graph.facebook.com/v21.0/me", params={"fields": "id,name", "access_token": token},
+                      timeout=60).json()
+    log("Ключ належить:", me.get("name"), me.get("id"))
+
+
 def facebook_publish(person, region):
     page_id, token = env("FB_PAGE_ID"), env("FB_PAGE_TOKEN")
     if not (page_id and token):
@@ -781,6 +799,8 @@ def main():
         edit(mode)
     elif mode == "fixpost":
         fix_post(env("MESSAGE_ID"))
+    elif mode == "fbcheck":
+        facebook_check()
     elif mode == "checkchannel":
         check_channel()
     elif mode == "linkpreview":
