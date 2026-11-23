@@ -786,6 +786,16 @@ def fix_post(message_id):
     log("Допис", message_id, "у каналі оновлено")
 
 
+def who_started():
+    """Хто писав боту (наприклад, натиснув «Старт»): номери чатів і імена. Нічого не надсилає
+    і не позначає повідомлення прочитаними (getUpdates без offset)."""
+    for u in tg("getUpdates", _token=review_token(), timeout=0, allowed_updates=["message"]):
+        m = u.get("message") or {}
+        f = m.get("from") or {}
+        log(f"{f.get('id')} | {f.get('first_name','')} {f.get('last_name','')} | @{f.get('username','')} | "
+            f"{(m.get('text') or '')[:20]} | {datetime.fromtimestamp(m.get('date', 0), KYIV):%d.%m %H:%M}")
+
+
 def check_channel():
     """Перевіряє, чи може Меморіал-бот публікувати в CHANNEL_ID; звіт — редакторці."""
     ch = env("CHANNEL_ID")
@@ -831,6 +841,8 @@ def main():
         edit(mode)
     elif mode == "fixpost":
         fix_post(env("MESSAGE_ID"))
+    elif mode == "whostarted":
+        who_started()
     elif mode == "fbcheck":
         facebook_check()
     elif mode == "fbmention":
