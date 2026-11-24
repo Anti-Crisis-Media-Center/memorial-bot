@@ -67,7 +67,9 @@ def test_military_post_format():
     assert "Бойовий медик, 114-та окрема бригада" in text
     assert "memorial_ukraine" in text
     fb = build_post(p, DONETSK, html_mode=False, network="facebook")
-    assert "memorialofheroes" in fb and "<b>" not in fb
+    # Facebook (з 28.11): без посилань, хештегів і тегів; джерело — текстом; посилання — у коментарі
+    assert "<b>" not in fb and "http" not in fb and "#" not in fb
+    assert "Історію зберегла платформа пам'яті «Меморіал»" in fb
 
 
 def test_age_words():

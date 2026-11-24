@@ -496,19 +496,57 @@ def facebook_mention_test():
     log("Тестове фото видалено:", d)
 
 
-def facebook_publish(person, region):
-    page_id, token = env("FB_PAGE_ID"), env("FB_PAGE_TOKEN")
-    if not (page_id and token):
+FB_PAGE = "414302258746592"        # жовта сторінка «Антикризовий медіа-центр»
+FB_START = date(2026, 11, 28)      # перший день «Хвилини мовчання» на Facebook (рішення Юлі 24.11)
+FB_API = "https://graph.facebook.com/v21.0"
+
+
+def facebook_comment_text(person):
+    return f"Історія {person.name} на платформі пам'яті «Меморіал»: {person.url}"
+
+
+def facebook_publish(person, region, card_bytes=None):
+    """Жовта сторінка: картка як фото + текст без посилань; посилання на історію — першим коментарем."""
+    token = env("FACEBOOK_PAGE_TOKEN")
+    if not token:
+        log("Facebook: немає FACEBOOK_PAGE_TOKEN — пропускаю")
         return None
+    pt = requests.get(f"{FB_API}/{FB_PAGE}", params={"fields": "access_token", "access_token": token},
+                      timeout=60).json()
+    ptoken = pt.get("access_token") or token
     text = build_post(person, region, html_mode=False, network="facebook")
-    r = requests.post(f"https://graph.facebook.com/v21.0/{page_id}/photos",
-                      data={"caption": text, "access_token": token},
-                      files={"source": ("card.jpg", make_card(person, region), "image/jpeg")},
-                      timeout=120)
-    data = r.json()
+    card_bytes = card_bytes or make_card(person, region)
+    data = requests.post(f"{FB_API}/{FB_PAGE}/photos", data={"caption": text, "access_token": ptoken},
+                         files={"source": ("card.jpg", card_bytes, "image/jpeg")}, timeout=180).json()
     if "error" in data:
-        raise RuntimeError(f"Facebook: {data['error']}")
+        raise RuntimeError(f"Facebook: {data['error'].get('message')}")
+    post_id = data.get("post_id") or data.get("id")
+    time.sleep(5)
+    c = requests.post(f"{FB_API}/{post_id}/comments",
+                      data={"message": facebook_comment_text(person), "access_token": ptoken}, timeout=60).json()
+    if "error" in c:
+        log("Facebook: допис є, але коментар з посиланням не додався:", c["error"].get("message"))
+        review_send(f"⚠️ Facebook: допис вийшов, але перший коментар не додався. "
+                    f"Додай вручну: {facebook_comment_text(person)}")
     return data
+
+
+def facebook_preview():
+    """Показ у «Тестах», як виглядатиме допис для Facebook (сьогоднішня людина). На Facebook нічого не йде."""
+    pending = load(PENDING_FILE, {})
+    person = memorial.Person(**pending["person"])
+    region = pending["region"]
+    card_bytes = make_card(person, region, nocut=pending.get("nocut", False),
+                           contour=pending.get("contour"), erase=pending.get("erase"))
+    text = build_post(person, region, html_mode=False, network="facebook")
+    tg_send(TEST_GROUP_ID, "📘 ТАК ВИГЛЯДАТИМЕ ДОПИС НА ЖОВТІЙ СТОРІНЦІ FACEBOOK (з 28.11)", card_bytes,
+            token=review_token())
+    for i in range(0, len(text), 4000):
+        tg("sendMessage", _token=review_token(), chat_id=TEST_GROUP_ID, message_thread_id=TEST_THREAD,
+           text=text[i:i + 4000], disable_web_page_preview=True, disable_notification=True)
+    tg("sendMessage", _token=review_token(), chat_id=TEST_GROUP_ID, message_thread_id=TEST_THREAD,
+       text="💬 Перший коментар під дописом:\n" + facebook_comment_text(person),
+       disable_web_page_preview=True, disable_notification=True)
 
 
 # ---------- сценарії ----------
@@ -726,13 +764,13 @@ def publish(pending):
             raise
     log("Telegram: опубліковано в", "канал" if to_channel else "чат перевірки (тестовий режим)")
 
-    if to_channel:
+    if to_channel and date.fromisoformat(pending["date"]) >= FB_START:
         try:
-            if facebook_publish(person, region):
-                log("Facebook: опубліковано")
+            if facebook_publish(person, region, card_bytes):
+                log("Facebook: опубліковано на жовтій сторінці")
         except Exception as e:
             log("Facebook не вдалося:", e)
-            tg("sendMessage", chat_id=env("REVIEW_CHAT_ID"), text=f"⚠️ Facebook: {e}")
+            review_send(f"⚠️ Facebook: допис не вийшов ({e}). У Telegram усе гаразд.")
 
     published = load(PUBLISHED_FILE, {"rejected": [], "log": []})
     if to_channel:
@@ -888,6 +926,8 @@ def main():
         edit(mode)
     elif mode == "fixpost":
         fix_post(env("MESSAGE_ID"))
+    elif mode == "fbpreview":
+        facebook_preview()
     elif mode == "whostarted":
         who_started()
     elif mode == "fbcheck":

@@ -197,6 +197,12 @@ def _build_post(person, region, html_mode=True, network="telegram"):
         src = MEMORIAL_TELEGRAM
     else:
         src = MEMORIAL_FACEBOOK.get(person.cat, MEMORIAL_FACEBOOK["civilians"])
+    if network == "facebook":
+        # Facebook (жовта сторінка, з 28.11): без посилань, хештегів і відміток у тексті —
+        # Facebook ріже охоплення; посилання на історію — першим коментарем (рішення Юлі 23.11).
+        # Джерело вказуємо обов'язково (п. 4.2 меморандуму).
+        lines.append("Історію зберегла платформа пам'яті «Меморіал». Посилання на неї – у першому коментарі.")
+        return "\n".join(lines).strip()
     if html_mode:
         lines.append(f'Історію зберегла платформа пам\'яті <a href="{src}">«Меморіал»</a> · '
                      f'<a href="{person.url}">читати на сайті</a>')
