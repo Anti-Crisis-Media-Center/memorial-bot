@@ -502,7 +502,7 @@ FB_API = "https://graph.facebook.com/v21.0"
 
 
 def facebook_comment_text(person):
-    return f"Історія {person.name} на платформі пам'яті «Меморіал»: {person.url}"
+    return f"Історія на платформі пам'яті «Меморіал»: {person.url}"   # без імені — щоб не відмінювати
 
 
 def facebook_publish(person, region, card_bytes=None):
