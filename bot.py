@@ -588,12 +588,8 @@ def prepare(day: date, dry_run=False):
     returning = person.id in published.get("postponed", {})
     card_bytes = make_card(person, region)
     review_send(text, card_bytes)
-    # 25.11.2026 (Юля): з дня старту Facebook – щоранку превʼю допису для FB у гілку «Меморіал» Суперчату
-    if not dry_run and day >= FB_START:
-        try:
-            facebook_preview(card_bytes, person, region)
-        except Exception as e:
-            log("Превʼю для Facebook не вдалося:", e)
+    # 25.11.2026 (Юля): автоматичне превʼю для Facebook не потрібне – перевіряємо фото в чернетці,
+    # а у Facebook іде та сама картка. Превʼю лише вручну: mode `fbpreview`.
     if returning and not dry_run:
         # цю людину вже колись замінювали — показуємо ще й варіант без вирізання, щоб обрати
         review_send("Варіант 2 — те саме фото без вирізання (м'яким овалом):",
