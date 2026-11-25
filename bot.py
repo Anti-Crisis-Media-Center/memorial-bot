@@ -873,11 +873,18 @@ def fix_post(message_id):
 def who_started():
     """Хто писав боту (наприклад, натиснув «Старт»): номери чатів і імена. Нічого не надсилає
     і не позначає повідомлення прочитаними (getUpdates без offset)."""
+    lines = []
     for u in tg("getUpdates", _token=review_token(), timeout=0, allowed_updates=["message"]):
         m = u.get("message") or {}
         f = m.get("from") or {}
-        log(f"{f.get('id')} | {f.get('first_name','')} {f.get('last_name','')} | @{f.get('username','')} | "
-            f"{(m.get('text') or '')[:20]} | {datetime.fromtimestamp(m.get('date', 0), KYIV):%d.%m %H:%M}")
+        line = (f"{f.get('id')} | {f.get('first_name','')} {f.get('last_name','')} | @{f.get('username','')} | "
+                f"{(m.get('text') or '')[:20]} | {datetime.fromtimestamp(m.get('date', 0), KYIV):%d.%m %H:%M}")
+        log(line)
+        lines.append(line)
+    # Список — лише Юлі в особистий чат (з 25.11.2026), щоб не шукати номер у журналі GitHub
+    text = ("👤 Хто писав Меморіал-боту (ID | ім'я | @нік | текст | час):\n" + "\n".join(lines)) if lines \
+        else "👤 Нових повідомлень боту немає. Попросіть колегу ще раз натиснути «Старт» і запустіть перевірку знову."
+    tg("sendMessage", _token=review_token(), chat_id=env("REVIEW_CHAT_ID"), text=text[:4000])
 
 
 def check_channel():
