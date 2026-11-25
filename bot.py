@@ -531,15 +531,17 @@ def facebook_publish(person, region, card_bytes=None):
     return data
 
 
-def facebook_preview():
-    """Показ у «Тестах», як виглядатиме допис для Facebook (сьогоднішня людина). На Facebook нічого не йде."""
+def facebook_preview(card_bytes=None, person=None, region=None):
+    """Превʼю в гілку «Меморіал»: як виглядатиме допис для Facebook (сьогоднішня людина). На Facebook нічого не йде."""
     pending = load(PENDING_FILE, {})
-    person = memorial.Person(**pending["person"])
-    region = pending["region"]
-    card_bytes = make_card(person, region, nocut=pending.get("nocut", False),
-                           contour=pending.get("contour"), erase=pending.get("erase"))
+    if person is None:
+        person = memorial.Person(**pending["person"])
+        region = pending["region"]
+    if card_bytes is None:
+        card_bytes = make_card(person, region, nocut=pending.get("nocut", False),
+                               contour=pending.get("contour"), erase=pending.get("erase"))
     text = build_post(person, region, html_mode=False, network="facebook")
-    tg_send(TEST_GROUP_ID, "📘 ТАК ВИГЛЯДАТИМЕ ДОПИС НА ЖОВТІЙ СТОРІНЦІ FACEBOOK (з 28.11)", card_bytes,
+    tg_send(TEST_GROUP_ID, "📘 Так виглядатиме допис на жовтій сторінці Facebook о 9:00 (якщо чернетку змінять кнопками – у Facebook піде нова картка)", card_bytes,
             token=review_token())
     for i in range(0, len(text), 4000):
         tg("sendMessage", _token=review_token(), chat_id=TEST_GROUP_ID, message_thread_id=TEST_THREAD,
@@ -584,7 +586,14 @@ def prepare(day: date, dry_run=False):
         raise RuntimeError("Не знайдено жодної людини для поста")
     text = build_post(person, region)
     returning = person.id in published.get("postponed", {})
-    review_send(text, make_card(person, region))
+    card_bytes = make_card(person, region)
+    review_send(text, card_bytes)
+    # 25.11.2026 (Юля): з дня старту Facebook – щоранку превʼю допису для FB у гілку «Меморіал» Суперчату
+    if not dry_run and day >= FB_START:
+        try:
+            facebook_preview(card_bytes, person, region)
+        except Exception as e:
+            log("Превʼю для Facebook не вдалося:", e)
     if returning and not dry_run:
         # цю людину вже колись замінювали — показуємо ще й варіант без вирізання, щоб обрати
         review_send("Варіант 2 — те саме фото без вирізання (м'яким овалом):",
