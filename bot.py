@@ -686,10 +686,39 @@ def tell_others(who, what):
     review_send(f"👤 {name} натискає {what}.", exclude=who.get("id"))
 
 
+def _who(f):
+    name = " ".join(x for x in [f.get("first_name", ""), f.get("last_name", "")] if x).strip() or "без імені"
+    return f"{name} (@{f['username']}, ID {f.get('id')})" if f.get("username") else f"{name} (ID {f.get('id')})"
+
+
+def report_strangers(updates, allowed):
+    """Юлі в особисті: хто писав боту чи тиснув кнопки, але не є перевіряльником (з 25.11.2026)."""
+    seen = {}
+    for u in updates:
+        m = u.get("message") or (u.get("callback_query") or {})
+        f = m.get("from") or {}
+        if not f.get("id") or str(f["id"]) in allowed or f.get("is_bot"):
+            continue
+        what = (m.get("text") or "").strip()[:30] if u.get("message") else "натиснув(-ла) кнопку"
+        when = datetime.fromtimestamp((u.get("message") or {}).get("date", time.time()), KYIV).strftime("%d.%m %H:%M")
+        seen.setdefault(f["id"], f"• {_who(f)} – «{what or '…'}», {when}")
+    if seen:
+        try:
+            tg("sendMessage", _token=review_token(), chat_id=env("REVIEW_CHAT_ID"),
+               text="👤 Меморіал-боту писали люди, яких немає серед перевіряльників:\n" + "\n".join(seen.values())
+                    + "\nЯкщо це новий новинар – напиши Claude, щоб додати.")
+        except Exception as e:
+            log("Не вдалося повідомити про сторонніх:", e)
+
+
 def listen(until: datetime):
     """Слухає кнопки під чернеткою до вказаного часу. True — сьогодні вже вирішено."""
     token = review_token()
     allowed = set(reviewers())
+    try:   # хто писав боту, поки він «спав» — повідомляємо Юлі (з 25.11.2026)
+        report_strangers(tg("getUpdates", _token=token, timeout=0), allowed)
+    except Exception as e:
+        log("Перевірка сторонніх:", e)
     try:   # пропускаємо старі натискання
         old = tg("getUpdates", _token=token, offset=-1, timeout=0)
         offset = old[-1]["update_id"] + 1 if old else None
@@ -711,6 +740,7 @@ def listen(until: datetime):
             log("getUpdates:", e)
             time.sleep(10)
             continue
+        report_strangers(updates, allowed)
         for u in updates:
             offset = u["update_id"] + 1
             m = u.get("message") or {}
