@@ -789,23 +789,40 @@ def publish(pending):
     # публікує «меморіальний» бот; якщо його ще не додали в чат — старий бот
     try:
         # зі звуком: о 9:00 сповіщення нагадує зупинитися на хвилину мовчання
-        tg_send(target, build_post(person, region), card_bytes, silent=False, token=review_token())
+        tg_msg = tg_send(target, build_post(person, region), card_bytes, silent=False, token=review_token())
     except RuntimeError as e:
         if env("MEMORIAL_BOT_TOKEN") and ("chat not found" in str(e) or "Forbidden" in str(e)
                                           or "not enough rights" in str(e)):
             log("Новий бот не має доступу до чату — публікує старий:", e)
-            tg_send(target, build_post(person, region), card_bytes, silent=False)
+            tg_msg = tg_send(target, build_post(person, region), card_bytes, silent=False)
         else:
             raise
     log("Telegram: опубліковано в", "канал" if to_channel else "чат перевірки (тестовий режим)")
 
+    report = []   # звіт для гілки «Меморіал» Суперчату (рішення Юлі 25.11.2026)
+    ch = str(env("CHANNEL_ID") or "")
+    mid = (tg_msg or {}).get("message_id") if isinstance(tg_msg, dict) else None
+    report.append(f"• Telegram: https://t.me/{ch.lstrip('@')}/{mid}" if ch.startswith("@") and mid
+                  else "• Telegram: опубліковано")
     if to_channel and date.fromisoformat(pending["date"]) >= FB_START:
         try:
-            if facebook_publish(person, region, card_bytes):
+            fb = facebook_publish(person, region, card_bytes)
+            if fb:
                 log("Facebook: опубліковано на жовтій сторінці")
+                pid = fb.get("post_id") or fb.get("id")
+                report.append(f"• Facebook (жовта сторінка): https://www.facebook.com/{pid}")
         except Exception as e:
             log("Facebook не вдалося:", e)
             review_send(f"⚠️ Facebook: допис не вийшов ({e}). У Telegram усе гаразд.")
+            report.append("• Facebook (жовта сторінка): ⚠️ не вийшов – Юля вже знає")
+    if to_channel:
+        try:
+            tg("sendMessage", _token=review_token(), chat_id=TEST_GROUP_ID, message_thread_id=TEST_THREAD,
+               text=f"✅ «Хвилина мовчання» за {date.fromisoformat(pending['date']).strftime('%d.%m')} вийшла"
+                    f" – {person.name}\n" + "\n".join(report),
+               disable_web_page_preview=True, disable_notification=True)
+        except Exception as e:
+            log("Звіт у гілку «Меморіал» не надіслано:", e)
 
     published = load(PUBLISHED_FILE, {"rejected": [], "log": []})
     if to_channel:
