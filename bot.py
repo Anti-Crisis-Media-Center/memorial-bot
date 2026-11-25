@@ -929,6 +929,9 @@ def who_started():
     for u in tg("getUpdates", _token=review_token(), timeout=0, allowed_updates=["message"]):
         m = u.get("message") or {}
         f = m.get("from") or {}
+        # лише особисті чати з ботом: повідомлення з груп (Суперчат, «GroupAnonymousBot») — не люди (25.11)
+        if (m.get("chat") or {}).get("type") != "private" or f.get("is_bot"):
+            continue
         line = (f"{f.get('id')} | {f.get('first_name','')} {f.get('last_name','')} | @{f.get('username','')} | "
                 f"{(m.get('text') or '')[:20]} | {datetime.fromtimestamp(m.get('date', 0), KYIV):%d.%m %H:%M}")
         log(line)
