@@ -21,7 +21,7 @@ card.cut_person = timed("cut_person", card.cut_person)
 jobs = []
 for arg in sys.argv[1:]:                      # ID або ID@файл_фону (варіант синього для цивільних)
     arg, _, cfile = arg.partition("%")       # ID%файл_контуру.json — прев'ю з контуром редакторки
-    pid, _, bg = arg.partition("@")
+    pid, _, bg = arg.partition("@")         # ID! — прев'ю «Без вирізання»
     if cfile:
         bg = bg + "%" + cfile
     jobs.append((pid, bg))
@@ -39,10 +39,12 @@ for pid, bg in jobs:
     log.append(f"{pid} start")
     signal.signal(signal.SIGALRM, lambda *a: (_ for _ in ()).throw(TimeoutError()))
     signal.alarm(300)
+    nc = pid.endswith("!"); pid = pid.rstrip("!")
     p = memorial.parse_person(memorial.fetch(people[pid]["url"]), people[pid]["url"], people[pid]["cat"])
     region = "luhansk" if "Луган" in json.dumps(people[pid], ensure_ascii=False) else "donetsk"
     try:
-        tiles.append(Image.open(io.BytesIO(bot.make_card(p, region, contour=contour, erase=erase))).resize((720, 720)))
+        nocut = nc
+        tiles.append(Image.open(io.BytesIO(bot.make_card(p, region, nocut=nocut, contour=contour, erase=erase))).resize((720, 720)))
         log.append(f"{pid}: {time.time() - t0:.0f} s")
     except TimeoutError:
         log.append(f"{pid}: TIMEOUT")
