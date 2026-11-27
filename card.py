@@ -320,12 +320,28 @@ def _cut_person(photo: Image.Image, contour=None):
     except Exception:                                        # matting інколи падає — тоді без нього
         out = remove(rgb, session=_SESSION[0])
     a = np.array(out.getchannel("A")).astype("float32")
+    b = np.array(remove(rgb, session=_SESSION[1]).getchannel("A")).astype("float32")
+    face0 = find_face(photo)
+    if face0 is not None:
+        # темне волосся/одяг на темному тлі: birefnet іноді «з'їдає» вухо, шию й плече збоку.
+        # Там, де human_seg упевнено бачить людину, — лише в смузі від вух до плечей біля обличчя —
+        # повертаємо ці пікселі (Марина Воропай, 27.11)
+        fx, fy, fw, fh = face0
+        hh, ww = a.shape
+        y0, y1 = max(0, int(fy + 0.2 * fh)), min(hh, int(fy + 2.6 * fh))
+        x0, x1 = max(0, int(fx - 1.6 * fw)), min(ww, int(fx + 2.6 * fw))
+        band = np.zeros_like(a, dtype=bool)
+        band[y0:y1, x0:x1] = True
+        add = band & (b > 200) & (a < 100)
+        if add.sum() > 0.02 * (a > 128).sum():
+            print(f"cut_person: повертаю {int(add.sum())} px шиї/плеча, які пропустив birefnet")
+        a = np.where(add, np.maximum(a, b), a)
+        out.putalpha(Image.fromarray(a.clip(0, 255).astype("uint8")))
     if plain_background(rgb):
         # Меморіал часто вже прибрав тло (рівний сірий фон) — тут точна модель не помиляється,
         # а «чистка» другою моделлю лише відрізає спорядження й одяг. Беремо контур як є.
         out.putalpha(Image.fromarray(a.clip(0, 255).astype("uint8")))
         return out
-    b = np.array(remove(rgb, session=_SESSION[1]).getchannel("A")).astype("float32")
     # великі «чужі» шматки: є в birefnet, немає в human_seg
     foreign = ((a > 128) & (b < 40)).astype("uint8")
     face = find_face(photo)
@@ -483,10 +499,33 @@ def make_card(photo: Image.Image, *, category, name, subtitle, city, years, cred
         scale = 0.80 * H / photo.height
         ox = W - int(photo.width * scale * 0.90)
         oy = H - int(photo.height * scale)
+    cut = None if nocut else cut_person(photo, contour, erase)       # nocut — редакторка попросила фото без вирізання
+    if face is not None:
+        import numpy as np
+        # якщо за правим краєм картки опиняється помітна частина вирізаної людини (кошеня на руках,
+        # плече й рука), — зменшуємо людину, поки за краєм не лишиться не більше ~6% (не менше ніж до 72%)
+        src = (np.array(cut.getchannel("A")) > 128) if cut is not None else np.ones((photo.height, photo.width), bool)
+        cols = src.sum(0).astype("float64")
+        tot = cols.sum()
+        scale0 = scale
+        for _ in range(8):
+            ox_try = int(FACE_CX * W - (fx + fw / 2) * scale)
+            beyond = cols[(ox_try + np.arange(len(cols)) * scale) > W - 34].sum() / tot if tot else 0
+            if beyond <= 0.06 or scale <= scale0 * 0.72:
+                break
+            scale *= 0.94
+        if scale < scale0:
+            print(f"Фото зменшено до {scale / scale0:.0%}: за правим краєм було забагато (кошеня, рука)")
+            ox = int(FACE_CX * W - (fx + fw / 2) * scale)
+            oy = int(FACE_CY * H - (fy + fh / 2) * scale)
+            bottom = oy + photo.height * scale
+            target = H if paper else H - 31
+            if bottom < target:
+                max_shift = int((0.74 if paper else 0.60) * H - (oy + fcy * scale))
+                oy += max(0, min(int(target - bottom), max_shift))
     size = (max(1, int(photo.width * scale)), max(1, int(photo.height * scale)))
     duo = duo.resize(size, Image.LANCZOS).filter(ImageFilter.UnsharpMask(radius=2, percent=60, threshold=2))
 
-    cut = None if nocut else cut_person(photo, contour, erase)       # nocut — редакторка попросила фото без вирізання
     on_paper = cut is not None and BACKGROUNDS.get(category)
     if on_paper:
         # на підкладці з папером людина вирізана чітко по контуру, без розчинення країв;
