@@ -169,13 +169,17 @@ def _build_post(person, region, html_mode=True, network="telegram"):
     lines = [OPENING + " " + partner_line(person, html_mode, network), ""]
     lines.append(f"<b>{esc(title)}</b>" if html_mode else title)
 
-    # 2. Місто · дата
-    second = city
+    # 2. Місто і дата загибелі — кожне окремим рядком: «Місто · загинув …» на телефоні
+    # не вміщувався, і «року» падало на наступний рядок (пропозиція Тетяни Андрєєвої, 28.11)
+    if city:
+        lines.append(esc(city))
     if death:
-        second += f" · {died_word} {human_date(death)}"
-    if person.cat == "children" and age_n is not None:
-        second += f". {'Їй' if female else 'Йому'} було {age_words(age_n)}."
-    lines.append(esc(second))
+        third = f"{died_word.capitalize()} {human_date(death)}"
+        if person.cat == "children" and age_n is not None:
+            third += f". {'Їй' if female else 'Йому'} було {age_words(age_n)}."
+        lines.append(esc(third))
+    elif person.cat == "children" and age_n is not None:
+        lines.append(esc(f"{'Їй' if female else 'Йому'} було {age_words(age_n)}."))
 
     # 3. Посада і підрозділ для військових
     if person.cat == "militaries":

@@ -45,7 +45,7 @@ def test_person_civilian():
     assert region == DONETSK
     text = build_post(person, region)
     assert "<b>Олена Коневська, 41 рік</b>" in text
-    assert "Слов'янськ · загинула 28 серпня 2026 року" in text
+    assert "Слов'янськ\nЗагинула 28 серпня 2026 року" in text
     assert "Сфера" not in text and "Торгівля" not in text
     assert "#Словянськ" in text
     print("\n" + text)
@@ -63,7 +63,7 @@ def test_military_post_format():
     p.fields["Місто народження"] = ["м. Краматорськ, Донецька область"]
     text = build_post(p, DONETSK)
     assert "Володимир Вождаєнко, 54 роки" in text
-    assert "Краматорськ · загинув 2 липня 2024 року" in text
+    assert "Краматорськ\nЗагинув 2 липня 2024 року" in text
     assert "Бойовий медик, 114-та окрема бригада" in text
     assert "memorial_ukraine" in text
     fb = build_post(p, DONETSK, html_mode=False, network="facebook")
